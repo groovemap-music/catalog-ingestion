@@ -1,0 +1,12 @@
+/target/
+/dist/
+/.mise.local.toml
+/.env
+/.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.age
+.DS_Store
+

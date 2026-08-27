@@ -1,4 +1,4 @@
-"""Generate pinned Rust/Python artifacts and fixtures from the catalog event contract."""
+"""Generate repository-owned Rust/Python artifacts and contract fixtures."""
 
 from __future__ import annotations
 
@@ -9,18 +9,9 @@ import sys
 from typing import Any
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_ROOT = Path(__file__).resolve().parent / "catalog-events" / "v1"
 CONTRACT_PATH = CONTRACT_ROOT / "contract.json"
-PYTHON_CONSUMERS = (
-    "api",
-    "brainzgraphinator",
-    "brainztableinator",
-    "dashboard",
-    "graphinator",
-    "tableinator",
-    "utilities",
-)
 
 
 def _render_python(contract: dict[str, Any], *, lines_after_imports: int = 0) -> str:
@@ -30,7 +21,7 @@ def _render_python(contract: dict[str, Any], *, lines_after_imports: int = 0) ->
         "{\n" + "".join(f'    {json.dumps(name)}: {{"source": {json.dumps(item["source"])}}},\n' for name, item in sorted(consumers.items())) + "}"
     )
     import_spacing = "\n" * lines_after_imports
-    return f'''"""Generated from extractor/contracts/catalog-events/v1/contract.json; do not edit."""
+    return f'''"""Generated from contracts/catalog-events/v1/contract.json; do not edit."""
 
 from __future__ import annotations
 
@@ -114,7 +105,7 @@ def _render_rust(contract: dict[str, Any]) -> str:
     sources = contract["sources"]
     discogs = ", ".join(json.dumps(item) for item in sources["discogs"]["entities"])
     musicbrainz = ", ".join(json.dumps(item) for item in sources["musicbrainz"]["entities"])
-    return f"""// Generated from extractor/contracts/catalog-events/v1/contract.json; do not edit.
+    return f"""// Generated from contracts/catalog-events/v1/contract.json; do not edit.
 
 pub const CONTRACT_NAME: &str = {json.dumps(contract["contract"])};
 pub const CONTRACT_VERSION: u32 = {contract["version"]};
@@ -172,14 +163,9 @@ def render_all() -> dict[Path, str]:
     """Return every generated path and its deterministic content."""
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     rendered = {
-        REPOSITORY_ROOT / "extractor" / "src" / "generated" / "catalog_contract.rs": _render_rust(contract),
+        REPOSITORY_ROOT / "src" / "generated" / "catalog_contract.rs": _render_rust(contract),
+        CONTRACT_ROOT / "bindings" / "python" / "catalog_contract.py": _render_python(contract),
     }
-    for consumer in PYTHON_CONSUMERS:
-        lines_after_imports = 1 if consumer in {"api", "dashboard", "utilities"} else 0
-        rendered[REPOSITORY_ROOT / consumer / "catalog_contract.py"] = _render_python(
-            contract,
-            lines_after_imports=lines_after_imports,
-        )
     rendered.update(_render_fixtures(contract))
     return rendered
 

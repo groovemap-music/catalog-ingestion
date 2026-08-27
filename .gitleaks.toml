@@ -1,0 +1,12 @@
+title = "catalog-ingestion secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reproducible local build and release output is not source input"
+paths = [
+  '''(^|/)target/''',
+  '''(^|/)dist/''',
+]
+

@@ -8,10 +8,9 @@ version = 2
 [licenses]
 version = 2
 # Allow:
-#  - PolyForm-Noncommercial-1.0.0: the extractor crate's own license
-#  - The remaining entries: licenses used by the extractor's transitive dependencies
+# The extractor crate is MIT licensed. Remaining entries are licenses used by
+# transitive dependencies.
 allow = [
-  "PolyForm-Noncommercial-1.0.0",
   "MIT",
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",

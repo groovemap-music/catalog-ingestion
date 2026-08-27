@@ -1,0 +1,10 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "cargo"
+version_scheme = "semver"
+tag_format = "v$version"
+annotated_tag = true
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
+changelog_start_rev = "b4c9a3c372b5841deaaa26f952aa5e1ba3925a99"
+

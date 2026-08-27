@@ -1,10 +1,31 @@
-# Extractor
+# GrooveMap catalog ingestion
 
-High-performance Rust-based data extractor for the Discogsography platform, supporting both Discogs and MusicBrainz data sources.
+Downloads, parses, normalizes, and publishes Discogs and MusicBrainz catalog datasets.
+The deployed binary retains the compatibility name `extractor` while this repository is
+the independently versioned `catalog-ingestion` release unit.
 
 ## Overview
 
-Extractor is a high-performance Rust service that streams and parses Discogs XML data dumps and MusicBrainz JSONL database dumps, sending processed records to RabbitMQ for consumption by downstream services (Graphinator and Tableinator).
+The service streams Discogs XML and MusicBrainz JSONL database dumps, then publishes
+versioned catalog events to RabbitMQ. This repository owns the event schemas, generated
+bindings, fixtures, extraction rules, and producer compatibility policy. Consumer
+services pin an immutable repository commit or released artifact; they do not use
+cross-repository relative imports.
+
+## Development
+
+Install the pinned tools with `mise install`, then use the stable repository interface:
+
+```bash
+just setup
+just check
+just test
+just build
+```
+
+`just check` is the credential-free pre-merge gate. `just audit`, `just image`, and
+`just release-dry-run` are explicit network or expensive gates. None of these commands
+pushes an image, publishes a package, creates a tag, or creates a release.
 
 ## Features
 
@@ -64,17 +85,11 @@ The health server listens on `HEALTH_PORT`, which defaults to **8000**.
 
 ## Building
 
-### Local Development
+### Local development
 
 ```bash
-# Build debug version
-cargo build
-
-# Build release version
-cargo build --release
-
-# Run tests
-cargo test
+just build
+just test
 
 # Run with debug logging
 LOG_LEVEL=DEBUG cargo run
@@ -87,7 +102,7 @@ cargo run
 
 ```bash
 # Build image
-docker build -t extractor .
+just image
 
 # Run container
 docker run -e RABBITMQ_HOST=rabbitmq extractor
@@ -159,7 +174,7 @@ When the extractor restarts, it checks the state marker and decides:
 | Processing in progress | **Continue**  | Resume unfinished files |
 | All completed          | **Skip**      | Wait for next check     |
 
-See **[State Marker System](../docs/state-marker-system.md)** for complete documentation.
+See **[State Marker System](docs/state-marker-system.md)** for complete documentation.
 
 ## Data Quality Rules
 
@@ -464,7 +479,7 @@ stateDiagram-v2
     Failed --> Running : next periodic attempt or trigger
 ```
 
-**Transition points in code** (`extractor/src/extractor.rs`):
+**Transition points in code** (`src/extractor.rs`):
 
 | Transition | Set by | Line |
 |---|---|---|
@@ -486,7 +501,9 @@ stateDiagram-v2
 
 ## Integration
 
-Extractor integrates with the Discogsography platform:
+Catalog ingestion integrates with the GrooveMap platform. Existing exchange names retain
+their `discogsography-*` prefix as a wire-compatibility decision until consumers complete
+a coordinated contract migration:
 
 - **Discogs mode**: Publishes to 4 RabbitMQ fanout exchanges (`discogsography-discogs-{artists,labels,masters,releases}`) consumed by Graphinator (Neo4j) and Tableinator (PostgreSQL)
 - **MusicBrainz mode**: Publishes to 4 RabbitMQ fanout exchanges (`discogsography-musicbrainz-{artists,labels,release-groups,releases}`) with MBID→Discogs ID cross-referencing
@@ -494,4 +511,13 @@ Extractor integrates with the Discogsography platform:
 
 ## License
 
-This project is licensed under the PolyForm Noncommercial License 1.0.0. See the [LICENSE](../LICENSE) file in the repository root.
+The current tree is licensed under the [MIT License](LICENSE). Earlier commits retain the
+licenses and notices that applied to those historical revisions.
+
+## Extraction history
+
+History was extracted from `SimplicityGuy/discogsography` by filtering the current
+migration branch for `extractor/`, the Rust lockfile, owned documentation/tests, and the
+root license, then promoting `extractor/` to this repository root. The exact reproducible
+command and source commit are recorded in [docs/extraction.md](docs/extraction.md). The
+original monorepo remains unchanged.

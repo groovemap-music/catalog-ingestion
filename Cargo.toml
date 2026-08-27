@@ -3,9 +3,11 @@ name = "extractor"
 version = "0.1.0"
 edition = "2024"
 authors = ["Robert Wlodarczyk <robert@simplicityguy.com>"]
-license = "PolyForm-Noncommercial-1.0.0"
-description = "High-performance Rust-based Discogs data extractor"
-repository = "https://github.com/SimplicityGuy/discogsography"
+description = "Discogs and MusicBrainz catalog ingestion and event-contract producer"
+repository = "https://github.com/groovemap-music/catalog-ingestion"
+homepage = "https://groovemap.music"
+license = "MIT"
+publish = false
 
 [[bin]]
 name = "extractor"

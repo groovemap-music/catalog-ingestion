@@ -1,4 +1,4 @@
-// Generated from extractor/contracts/catalog-events/v1/contract.json; do not edit.
+// Generated from contracts/catalog-events/v1/contract.json; do not edit.
 
 pub const CONTRACT_NAME: &str = "groovemap.catalog-events";
 pub const CONTRACT_VERSION: u32 = 1;

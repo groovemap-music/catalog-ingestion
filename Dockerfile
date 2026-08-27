@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.98-slim AS builder
+FROM rust:1.98-slim@sha256:fb4b2f1dc68c06f46618948b09d0ade147e6d2b11a6581e599b0c808d5b8a167 AS builder
 
 # Install build dependencies
 # hadolint ignore=DL3008
@@ -11,10 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create app directory
 WORKDIR /app
 
-# Copy Cargo files from extractor subdirectory
 COPY Cargo.lock ./
-COPY extractor/Cargo.toml ./
-COPY extractor/benches ./benches
+COPY Cargo.toml ./
+COPY benches ./benches
 
 # Create dummy main to cache dependencies
 RUN mkdir src && \
@@ -22,15 +21,15 @@ RUN mkdir src && \
     cargo build --release && \
     rm -rf src
 
-# Copy actual source code from extractor subdirectory
-COPY extractor/src ./src
+# Copy actual source code
+COPY src ./src
 
 # Build the application
 RUN touch src/main.rs && \
     cargo build --release
 
 # Runtime stage
-FROM debian:13-slim
+FROM debian:13-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 # Build arguments for configurable UID/GID (must match the compose `user:` override)
 ARG UID=1000

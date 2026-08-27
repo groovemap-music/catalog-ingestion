@@ -7,12 +7,14 @@ rules, and deterministic fixtures consumed by the Python services.
 Run the generator from the repository root whenever `v1/contract.json` changes:
 
 ```bash
-uv run python extractor/contracts/generate.py
+python contracts/generate.py
 ```
 
-The command writes the Rust constants, a pinned Python artifact into each current
-consumer, and fixtures beneath `v1/fixtures/`. Generated files contain a provenance
-header and must not be edited directly. CI verifies regeneration is byte-for-byte clean.
+The command writes the Rust constants, a distributable Python binding beneath
+`v1/bindings/python/`, and fixtures beneath `v1/fixtures/`. Generated files contain a
+provenance header and must not be edited directly. CI verifies regeneration is
+byte-for-byte clean. Consumer repositories copy or package this output from an immutable
+`catalog-ingestion` commit; this generator never writes across repository boundaries.
 
 Contract versions describe the distribution containing an event; the v1 envelope is
 kept unchanged for compatibility and therefore does not add an on-wire version field.
@@ -20,5 +22,5 @@ Breaking changes require a new sibling version directory and a coordinated produ
 consumer rollout. Additive entity fields remain compatible because data events permit
 source-specific fields beyond the stable `type`, `id`, and `sha256` envelope.
 
-The extraction policy remains `extractor/extraction-rules.yaml`; it is part of the
+The extraction policy remains `extraction-rules.yaml`; it is part of the
 catalog-ingestion release and is not copied into consumers.
