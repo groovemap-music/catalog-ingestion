@@ -10,6 +10,8 @@
   decisions, durability, and checksum provenance.
 - [Periodic state-marker checkpoints](state-marker-periodic-updates.md) — checkpoint
   frequency, monitoring, and recovery guarantees.
+- [Runtime identity and compatibility](runtime-identity.md) — canonical GrooveMap names
+  and the internal or wire identifiers retained for compatibility.
 - [Catalog event contract](../contracts/catalog-events/README.md) — versioning,
   generated bindings, fixtures, and consumer promotion.
 

@@ -50,10 +50,15 @@ credentials, volumes, service topology, image deployment, and mounting the
 source-controlled extraction-rules file belong to the `deployment` repository. The
 rules file is not baked into the container image or release bundle.
 
+The product, repository, health-service, and container-image identity is
+`catalog-ingestion`. A small set of executable, Compose-network, environment, and
+RabbitMQ names remains stable for compatibility; these are cataloged in [Runtime identity
+and compatibility](docs/runtime-identity.md).
+
 ## Documentation
 
 See the [documentation index](docs/README.md) for source pipelines, extraction rules,
-state-marker behavior, and maintained architecture decisions. The [contract
+state-marker behavior, runtime identity, and maintained architecture decisions. The [contract
 guide](contracts/catalog-events/README.md) describes compatibility and promotion.
 
 ## Release and license
