@@ -83,7 +83,7 @@ pub struct MessageQueue {
 }
 
 impl MessageQueue {
-    /// Build the fanout exchange name for a given data type (e.g. "discogsography-discogs-artists")
+    /// Build the fanout exchange name for a given data type (e.g. "groovemap-discogs-artists")
     fn exchange_name(&self, data_type: DataType) -> String {
         format!("{}-{}", self.exchange_prefix, data_type)
     }
@@ -123,7 +123,7 @@ impl MessageQueue {
             parsed_url.set_path("");
         }
         // If path is empty, lapin correctly uses default vhost
-        // If path is something else (e.g., "/discogsography"), lapin uses that vhost
+        // If path is something else (e.g., "/groovemap"), lapin uses that vhost
 
         Ok(parsed_url.to_string())
     }

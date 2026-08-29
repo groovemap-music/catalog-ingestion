@@ -1,5 +1,8 @@
 # Catalog event contracts
 
+See the repository [documentation index](../../docs/README.md) for extraction behavior and
+producer design records.
+
 `catalog-ingestion` owns the versioned wire contract in this directory. Version `v1`
 defines the event envelopes, entity vocabulary, exchange and queue naming, extraction
 rules, and deterministic fixtures consumed by the Python services.

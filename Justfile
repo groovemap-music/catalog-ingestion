@@ -20,6 +20,9 @@ lint:
 test:
     cargo test --all-features --locked
 
+coverage:
+    cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
+
 contract:
     python contracts/generate.py
 

@@ -35,8 +35,8 @@ fn test_config(root: &std::path::Path) -> ExtractorConfig {
         data_quality_rules: None,
         source: Source::Discogs,
         musicbrainz_root: std::path::PathBuf::from("/musicbrainz-data"),
-        discogs_exchange_prefix: "discogsography-discogs".to_string(),
-        musicbrainz_exchange_prefix: "discogsography-musicbrainz".to_string(),
+        discogs_exchange_prefix: "groovemap-discogs".to_string(),
+        musicbrainz_exchange_prefix: "groovemap-musicbrainz".to_string(),
         musicbrainz_dump_url: "https://data.metabrainz.org/pub/musicbrainz/data/json-dumps/".to_string(),
         discogs_health_url: "http://extractor-discogs:8000/health".to_string(),
     }
@@ -374,8 +374,7 @@ async fn test_default_mq_factory_create_fails_without_broker() {
 
     let factory = DefaultMessageQueueFactory;
     // Invalid port so connection fails fast
-    let result: anyhow::Result<Arc<dyn extractor::message_queue::MessagePublisher>> =
-        factory.create("amqp://localhost:59999", "discogsography").await;
+    let result: anyhow::Result<Arc<dyn extractor::message_queue::MessagePublisher>> = factory.create("amqp://localhost:59999", "groovemap").await;
     assert!(result.is_err());
 }
 
@@ -800,8 +799,8 @@ fn mb_test_config_with_health(mb_root: &std::path::Path, dump_url: &str, health_
         data_quality_rules: None,
         source: Source::MusicBrainz,
         musicbrainz_root: mb_root.to_path_buf(),
-        discogs_exchange_prefix: "discogsography-discogs".to_string(),
-        musicbrainz_exchange_prefix: "discogsography-musicbrainz".to_string(),
+        discogs_exchange_prefix: "groovemap-discogs".to_string(),
+        musicbrainz_exchange_prefix: "groovemap-musicbrainz".to_string(),
         musicbrainz_dump_url: dump_url.to_string(),
         discogs_health_url: health_url.to_string(),
     }

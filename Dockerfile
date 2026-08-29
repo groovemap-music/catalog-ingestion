@@ -18,7 +18,7 @@ COPY benches ./benches
 # Create dummy main to cache dependencies
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo build --release --locked && \
     rm -rf src
 
 # Copy actual source code
@@ -26,14 +26,30 @@ COPY src ./src
 
 # Build the application
 RUN touch src/main.rs && \
-    cargo build --release
+    cargo build --release --locked
 
 # Runtime stage
 FROM debian:13-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 # Build arguments for configurable UID/GID (must match the compose `user:` override)
+ARG BUILD_DATE
+ARG BUILD_VERSION=0.1.0
+ARG VCS_REF
 ARG UID=1000
 ARG GID=1000
+
+LABEL org.opencontainers.image.title="catalog-ingestion" \
+      org.opencontainers.image.description="Discogs and MusicBrainz catalog extraction and event publishing" \
+      org.opencontainers.image.authors="Robert Wlodarczyk <robert@simplicityguy.com>" \
+      org.opencontainers.image.url="https://groovemap.music" \
+      org.opencontainers.image.documentation="https://github.com/groovemap-music/catalog-ingestion/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/groovemap-music/catalog-ingestion" \
+      org.opencontainers.image.vendor="GrooveMap" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${BUILD_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.base.name="docker.io/library/debian:13-slim"
 
 # Install runtime dependencies
 # hadolint ignore=DL3008

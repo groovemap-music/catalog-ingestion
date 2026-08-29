@@ -11,7 +11,7 @@ fn test_default_config() {
     assert_eq!(config.progress_log_interval, 1000);
     assert_eq!(config.state_save_interval, 5000);
     assert_eq!(config.health_port, 8000);
-    assert_eq!(config.amqp_connection, "amqp://discogsography:discogsography@localhost:5672/%2F");
+    assert_eq!(config.amqp_connection, "amqp://groovemap:groovemap@localhost:5672/%2F");
     assert_eq!(config.discogs_root, PathBuf::from("/discogs-data"));
 }
 
@@ -55,7 +55,7 @@ fn test_from_env_uses_credential_defaults() {
     }
 
     let config = ExtractorConfig::from_env().unwrap();
-    assert_eq!(config.amqp_connection, "amqp://discogsography:discogsography@rabbitmq:5672/%2F");
+    assert_eq!(config.amqp_connection, "amqp://groovemap:groovemap@rabbitmq:5672/%2F");
 }
 
 #[test]

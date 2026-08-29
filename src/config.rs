@@ -28,7 +28,7 @@ pub struct ExtractorConfig {
 impl Default for ExtractorConfig {
     fn default() -> Self {
         Self {
-            amqp_connection: build_amqp_url("discogsography", "discogsography", "localhost", "5672"),
+            amqp_connection: build_amqp_url("groovemap", "groovemap", "localhost", "5672"),
             discogs_root: PathBuf::from("/discogs-data"),
             periodic_check_days: 15,
             health_port: 8000,
@@ -70,8 +70,8 @@ fn build_amqp_url(user: &str, password: &str, host: &str, port: &str) -> String 
 impl ExtractorConfig {
     /// Load configuration from environment variables.
     pub fn from_env() -> Result<Self> {
-        let user = read_secret("RABBITMQ_USERNAME", "discogsography")?;
-        let password = read_secret("RABBITMQ_PASSWORD", "discogsography")?;
+        let user = read_secret("RABBITMQ_USERNAME", "groovemap")?;
+        let password = read_secret("RABBITMQ_PASSWORD", "groovemap")?;
         let host = std::env::var("RABBITMQ_HOST").unwrap_or_else(|_| "rabbitmq".to_string());
         let port = std::env::var("RABBITMQ_PORT").unwrap_or_else(|_| "5672".to_string());
         let amqp_connection = build_amqp_url(&user, &password, &host, &port);

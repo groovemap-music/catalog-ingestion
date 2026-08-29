@@ -10,10 +10,10 @@ fn test_exchange_names_default_prefix() {
         max_retries: 1,
         exchange_prefix: DEFAULT_EXCHANGE_PREFIX.to_string(),
     };
-    assert_eq!(mq.exchange_name(DataType::Artists), "discogsography-discogs-artists");
-    assert_eq!(mq.exchange_name(DataType::Labels), "discogsography-discogs-labels");
-    assert_eq!(mq.exchange_name(DataType::Masters), "discogsography-discogs-masters");
-    assert_eq!(mq.exchange_name(DataType::Releases), "discogsography-discogs-releases");
+    assert_eq!(mq.exchange_name(DataType::Artists), "groovemap-discogs-artists");
+    assert_eq!(mq.exchange_name(DataType::Labels), "groovemap-discogs-labels");
+    assert_eq!(mq.exchange_name(DataType::Masters), "groovemap-discogs-masters");
+    assert_eq!(mq.exchange_name(DataType::Releases), "groovemap-discogs-releases");
 }
 
 #[test]
@@ -24,11 +24,11 @@ fn test_exchange_names_custom_prefix() {
         reconnect_mutex: tokio::sync::Mutex::new(()),
         url: String::new(),
         max_retries: 1,
-        exchange_prefix: "discogsography-musicbrainz".to_string(),
+        exchange_prefix: "groovemap-musicbrainz".to_string(),
     };
-    assert_eq!(mq.exchange_name(DataType::Artists), "discogsography-musicbrainz-artists");
-    assert_eq!(mq.exchange_name(DataType::Labels), "discogsography-musicbrainz-labels");
-    assert_eq!(mq.exchange_name(DataType::Releases), "discogsography-musicbrainz-releases");
+    assert_eq!(mq.exchange_name(DataType::Artists), "groovemap-musicbrainz-artists");
+    assert_eq!(mq.exchange_name(DataType::Labels), "groovemap-musicbrainz-labels");
+    assert_eq!(mq.exchange_name(DataType::Releases), "groovemap-musicbrainz-releases");
 }
 
 #[test]
@@ -50,9 +50,9 @@ fn test_normalize_amqp_url_without_trailing_slash() {
 #[test]
 fn test_normalize_amqp_url_with_explicit_vhost() {
     // Explicit vhost should be preserved
-    let url = "amqp://user:pass@host:5672/discogsography";
+    let url = "amqp://user:pass@host:5672/groovemap";
     let normalized = MessageQueue::normalize_amqp_url(url).unwrap();
-    assert_eq!(normalized, "amqp://user:pass@host:5672/discogsography");
+    assert_eq!(normalized, "amqp://user:pass@host:5672/groovemap");
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn test_message_serialization_file_complete() {
 
 #[test]
 fn test_constants() {
-    assert_eq!(DEFAULT_EXCHANGE_PREFIX, "discogsography-discogs");
+    assert_eq!(DEFAULT_EXCHANGE_PREFIX, "groovemap-discogs");
     assert_eq!(AMQP_EXCHANGE_TYPE, ExchangeKind::Fanout);
 }
 
@@ -358,29 +358,29 @@ fn test_publish_options_are_mandatory() {
 #[test]
 fn test_confirmation_ack_without_return() {
     // The healthy case: acked and routed.
-    assert!(check_confirmation("discogsography-discogs-artists", true, None).is_ok());
+    assert!(check_confirmation("groovemap-discogs-artists", true, None).is_ok());
 }
 
 #[test]
 fn test_confirmation_returned_is_failure() {
     // RabbitMQ answers a mandatory publish that matched no queue with basic.return
     // FOLLOWED BY basic.ack — the ack alone must not be read as delivery.
-    let err = check_confirmation("discogsography-discogs-artists", true, Some((312, "NO_ROUTE".to_string())))
+    let err = check_confirmation("groovemap-discogs-artists", true, Some((312, "NO_ROUTE".to_string())))
         .expect_err("an unroutable message must fail the publish");
     let message = err.to_string();
-    assert!(message.contains("discogsography-discogs-artists"), "error should name the exchange: {message}");
+    assert!(message.contains("groovemap-discogs-artists"), "error should name the exchange: {message}");
     assert!(message.contains("NO_ROUTE") && message.contains("312"), "error should carry the broker's reason: {message}");
 }
 
 #[test]
 fn test_confirmation_nack_is_failure() {
-    let err = check_confirmation("discogsography-discogs-artists", false, None).expect_err("a nack must fail the publish");
+    let err = check_confirmation("groovemap-discogs-artists", false, None).expect_err("a nack must fail the publish");
     assert!(err.to_string().contains("not acknowledged"), "unexpected error: {err}");
 }
 
 #[test]
 fn test_confirmation_nack_with_return() {
     // A nack that also carries a returned message reports the routing failure.
-    let err = check_confirmation("discogsography-discogs-releases", false, Some((312, "NO_ROUTE".to_string()))).expect_err("must fail");
+    let err = check_confirmation("groovemap-discogs-releases", false, Some((312, "NO_ROUTE".to_string()))).expect_err("must fail");
     assert!(err.to_string().contains("unroutable"), "unexpected error: {err}");
 }
