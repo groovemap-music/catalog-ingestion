@@ -88,6 +88,28 @@ require(re.search(r"^ARG UID=1000$", dockerfile, re.MULTILINE) is not None, "Doc
 require(re.search(r"^ARG GID=1000$", dockerfile, re.MULTILINE) is not None, "Dockerfile must pin the default GID")
 require("useradd -r -l -u ${UID}" in dockerfile, "runtime user must use the configured UID")
 require(re.search(r"^USER \$\{UID\}:\$\{GID\}$", dockerfile, re.MULTILINE) is not None, "runtime USER must match the owned directories")
+require('org.opencontainers.image.title="catalog-ingestion"' in dockerfile, "container image title must match the repository")
+require("RUST_EXTRACTOR_CONFIG" not in dockerfile, "unused legacy extractor configuration variable must stay removed")
+
+release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+require("image-name: catalog-ingestion" in release_workflow, "release workflow must publish the repository-named image")
+
+polite_http = (ROOT / "src" / "polite_http.rs").read_text(encoding="utf-8")
+require("groovemap-catalog-ingestion/" in polite_http, "default User-Agent must identify GrooveMap catalog ingestion")
+
+for runtime_identity_source in (ROOT / "src" / "main.rs", ROOT / "src" / "health.rs"):
+    text = runtime_identity_source.read_text(encoding="utf-8").lower()
+    require("rust-extractor" not in text, f"legacy runtime identity remains in {runtime_identity_source.relative_to(ROOT)}")
+
+active_identity_files = (
+    ROOT / "README.md",
+    ROOT / "Dockerfile",
+    ROOT / "Cargo.toml",
+    *(ROOT / "docs").rglob("*.md"),
+)
+for path in active_identity_files:
+    text = path.read_text(encoding="utf-8").lower()
+    require("discogsography" not in text, f"active legacy product identity remains in {path.relative_to(ROOT)}")
 
 contract = json.loads((ROOT / "contracts/catalog-events/v1/contract.json").read_text(encoding="utf-8"))
 require(contract["version"] == 1, "unexpected catalog contract version")

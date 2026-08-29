@@ -30,7 +30,7 @@ use config::ExtractorConfig;
 use health::HealthServer;
 use types::Source;
 
-/// High-performance Discogs data extractor written in Rust
+/// GrooveMap catalog ingestion for Discogs and MusicBrainz.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -164,16 +164,16 @@ async fn main() -> Result<()> {
     };
 
     // Cleanup
-    info!("🛑 Shutting down rust-extractor...");
+    info!("🛑 Shutting down catalog-ingestion...");
     health_handle.abort();
 
     match extraction_result {
         Ok(_) => {
-            info!("✅ Rust-extractor service shutdown complete");
+            info!("✅ catalog-ingestion service shutdown complete");
             Ok(())
         }
         Err(e) => {
-            error!("❌ Rust-extractor failed: {}", e);
+            error!("❌ catalog-ingestion failed: {}", e);
             // Sleep before exiting so docker-compose's `restart: on-failure`
             // policy can't flap us through a rate-limit window. The polite
             // client already absorbs single Retry-After cooldowns up to 2h;
@@ -210,21 +210,24 @@ async fn apply_failure_cooldown(env_value: Option<&str>) {
 /// hardcoded "Discogs" claim regardless of which extractor container is running.
 fn startup_banner_message(source: Source) -> &'static str {
     match source {
-        Source::Discogs => "🚀 Starting Rust-based Discogs data extractor with high performance",
-        Source::MusicBrainz => "🚀 Starting Rust-based MusicBrainz data extractor with high performance",
+        Source::Discogs => "🚀 Starting GrooveMap catalog-ingestion for Discogs",
+        Source::MusicBrainz => "🚀 Starting GrooveMap catalog-ingestion for MusicBrainz",
     }
 }
 
 fn print_ascii_art(_source: Option<&Source>) {
-    let banner = r#"
+    println!("{}", ascii_art());
+}
+
+fn ascii_art() -> &'static str {
+    r#"
          _        _               _                  _   _
  __ __ _| |_ __ _| |___  __ _ ___(_)_ _  __ _ ___ __| |_(_)___ _ _
 / _/ _` |  _/ _` | / _ \/ _` |___| | ' \/ _` / -_|_-<  _| / _ \ ' \
 \__\__,_|\__\__,_|_\___/\__, |   |_|_||_\__, \___/__/\__|_\___/_||_|
                         |___/           |___/
                           catalog-ingestion
-"#;
-    println!("{banner}");
+"#
 }
 
 fn setup_shutdown_handler() -> Arc<tokio::sync::Notify> {
