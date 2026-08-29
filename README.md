@@ -1,26 +1,29 @@
 # GrooveMap catalog ingestion
 
-Rust service that downloads, validates, parses, and normalizes Discogs and MusicBrainz
-catalog datasets, then publishes versioned events to RabbitMQ. This repository owns the
-producer contract, generated Rust and Python bindings, extraction rules, source-state
-markers, and the `catalog-ingestion` container image.
+`catalog-ingestion` downloads, verifies, parses, and normalizes Discogs and MusicBrainz
+catalog dumps, then publishes versioned events to RabbitMQ. This repository owns the
+producer behavior, event schemas, generated Rust and Python bindings, extraction policy,
+source-state markers, and the `catalog-ingestion` container image.
 
 ## Data flow
 
 ```mermaid
 flowchart LR
-    D[Discogs XML dumps] --> V[Download and validation]
-    M[MusicBrainz JSONL dumps] --> V
-    V --> P[Streaming parsers]
-    P --> N[Normalization and quality rules]
-    N --> R[(RabbitMQ catalog events)]
+    D[Discogs XML dumps] --> VD[Checksum verification]
+    M[MusicBrainz archives] --> VM[Checksum verification and JSONL extraction]
+    VD --> DP[Discogs streaming parser]
+    VM --> MP[MusicBrainz streaming parser]
+    DP --> N[Discogs quality policy and producer normalization]
+    N --> R[(Versioned RabbitMQ events)]
+    MP --> R
     R --> G[Graph enrichers]
     R --> S[SQL loaders]
 ```
 
-The producer publishes to source-specific exchanges. Consumer repositories promote the
-versioned contract from [`contracts/catalog-events/v1`](contracts/catalog-events/v1/)
-and verify its digest without importing this repository's source.
+Discogs publishes artists, labels, masters, and releases. MusicBrainz publishes artists,
+labels, release groups, and releases. Consumer repositories promote the contract from
+[`contracts/catalog-events/v1`](contracts/catalog-events/v1/) and verify its digest
+without importing this repository's source.
 
 ## Development
 
@@ -42,15 +45,16 @@ The stable repository interface includes:
 - `just image` — build the `catalog-ingestion:local` container image.
 - `just release-dry-run` — produce release evidence without tagging or publishing.
 
-Run the binary with `cargo run -- --help` for source selection and runtime options.
-Credentials and deployment topology belong to the `deployment` repository.
+Run `cargo run --locked -- --help` for source selection and runtime options. Runtime
+credentials, volumes, service topology, image deployment, and mounting the
+source-controlled extraction-rules file belong to the `deployment` repository. The
+rules file is not baked into the container image or release bundle.
 
 ## Documentation
 
-See the [documentation index](docs/README.md) for extraction rules, state-marker behavior,
-and the seven migrated extractor plan/spec pairs. The
-[contract guide](contracts/catalog-events/README.md) describes compatibility and
-promotion.
+See the [documentation index](docs/README.md) for source pipelines, extraction rules,
+state-marker behavior, and maintained architecture decisions. The [contract
+guide](contracts/catalog-events/README.md) describes compatibility and promotion.
 
 ## Release and license
 
@@ -59,4 +63,4 @@ The crate and container are independently versioned from `Cargo.toml`. Approved
 push, publish, or create a release.
 
 The current tree is licensed under the [MIT License](LICENSE). Historical source
-attribution and extraction details remain in retained design records and Git history.
+attribution remains available in Git history.
