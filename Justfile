@@ -30,7 +30,7 @@ test:
     cargo test --all-features --locked
 
 coverage: bootstrap
-    mise exec {{cargo_llvm_cov_tool}} -- cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
+    if [[ "$(uname -s)" == Linux ]]; then export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-C link-arg=-fuse-ld=bfd"; fi; mise exec {{cargo_llvm_cov_tool}} -- cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
 
 contract:
     python contracts/generate.py
@@ -43,6 +43,10 @@ repository-check:
 
 build:
     cargo build --release --locked
+
+install-check:
+    test -x target/release/extractor
+    install_root="$(mktemp -d)"; trap 'rm -rf "${install_root}"' EXIT; install -m 0755 target/release/extractor "${install_root}/catalog-ingestion"; "${install_root}/catalog-ingestion" --help >/dev/null
 
 build-check:
     cargo check --all-targets --all-features --locked
