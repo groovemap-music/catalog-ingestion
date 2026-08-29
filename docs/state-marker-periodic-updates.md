@@ -1,146 +1,65 @@
-# State Marker Periodic Updates Implementation
+# Periodic state-marker checkpoints
 
-## Overview
+The extractor saves per-file progress while a file is being processed. The default
+interval is 5,000 records and can be changed with `STATE_SAVE_INTERVAL`; values below
+one are clamped to one.
 
-This document describes the implementation of periodic state marker updates in the extractor to enable crash recovery and progress monitoring.
+```mermaid
+sequenceDiagram
+    participant Parser
+    participant Batcher
+    participant Publisher
+    participant Marker as State marker
+    participant Broker as RabbitMQ
 
-## Problem Statement
-
-Prior to this fix:
-
-- **Extractor**: Only saved state marker when file processing started (0 records) and completed (final count)
-- **Impact**: Extractor could lose hours of progress if it crashed or was restarted
-
-## Solution
-
-Implemented periodic state marker updates in extractor for crash recovery.
-
-### Configuration
-
-Added `state_save_interval` configuration parameter:
-
-- **Default**: 5,000 records
-- **Location**: `ExtractorConfig` struct in `config.rs`
-- **Default interval**: 5,000 records
-
-### Implementation Details
-
-#### Extractor Changes
-
-1. **Config Update** (`config.rs`):
-
-   - Added `state_save_interval: usize` field
-   - Set default to 5,000 records
-   - Updated all related tests
-
-1. **Message Batcher Update** (`extractor.rs`):
-
-   - Modified `message_batcher` function signature to accept:
-     - `state_marker: Arc<tokio::sync::Mutex<StateMarker>>`
-     - `marker_path: PathBuf`
-     - `file_name: String`
-     - `state_save_interval: usize`
-   - Added periodic save logic:
-     ```rust
-     if total_records % state_save_interval as u64 == 0 && total_records != last_state_save {
-         last_state_save = total_records;
-         let mut marker = state_marker.lock().await;
-         marker.update_file_progress(&file_name, total_records, total_records);
-         marker.save(&marker_path).await?;
-     }
-     ```
-   - Tracks total records processed
-   - Saves state every N records (configurable)
-   - Logs debug message on successful save
-   - Warns on save failures (non-fatal)
-
-1. **Process Single File Update** (`extractor.rs`):
-
-   - Updated spawned batcher task to pass required parameters
-   - Clones necessary Arc references for async context
-
-1. **Test Updates**:
-
-   - Updated all `message_batcher` tests to include new parameters
-   - All 125 tests pass successfully
-
-## Benefits
-
-1. **Crash Recovery**: Both extractors can now resume from last saved state
-1. **Progress Monitoring**: Users can check progress by reading state file
-1. **Consistency**: Consistent behavior across extraction runs
-1. **Minimal Performance Impact**: Saves only every 5,000 records
-1. **Graceful Error Handling**: Save failures don't stop processing
-
-## Usage
-
-### Monitoring Progress
-
-Read the state marker file to see current progress:
-
-```bash
-# In the container
-cat /discogs-data/.extraction_status_20260201.json
-
-# Look for progress_by_file section
-"progress_by_file": {
-  "discogs_20260201_masters.xml.gz": {
-    "status": "in_progress",
-    "records_extracted": 480900,  # Updates every 5,000 records
-    "messages_published": 480900,
-    "started_at": "2026-02-03T01:21:19.552593935Z",
-    "completed_at": null
-  }
-}
+    Parser->>Batcher: normalized records
+    Batcher->>Publisher: completed batches
+    Publisher->>Broker: publish batches
+    loop Every STATE_SAVE_INTERVAL records
+        Batcher->>Marker: records, messages, and batches
+        Marker->>Marker: fsync temp, rename, fsync directory
+    end
+    Batcher->>Marker: final per-file counters
 ```
 
-### Recovery After Crash
+## What a checkpoint records
 
-If the extractor crashes or is restarted:
+For the current file, a checkpoint updates:
 
-1. State marker is automatically loaded
-1. Already-completed files are skipped
-1. In-progress files resume from last checkpoint
-1. Processing continues seamlessly
+- `records_extracted`
+- `messages_published`
+- `batches_sent`
+- `last_updated`
 
-## Testing
+Checkpoint write failures are logged as warnings and do not stop the data pipeline. The
+extractor also writes the marker at phase transitions and file completion; those
+orchestration writes may be required for the run to complete successfully.
 
-### Extractor Tests
+## Recovery guarantee
 
-All tests pass (125 total):
+The restart boundary is the file, not an offset within the file:
+
+- Files marked `completed` are skipped on restart.
+- A file left `in_progress` is parsed and published again from its beginning.
+- The periodic count shows recent progress and limits how stale operational reporting
+  can become, but it is not a seek position.
+
+Consumers therefore must preserve the event contract's idempotent processing semantics.
+Do not infer exactly-once delivery from a checkpoint count.
+
+## Monitoring
+
+Inspect a marker in the configured source data root:
 
 ```bash
-cd extractor
-cargo test --lib
+jq '.processing_phase.current_file,
+    .processing_phase.progress_by_file' \
+  /discogs-data/.extraction_status_20260101.json
 ```
 
-Key tests for periodic saves:
+MusicBrainz markers live in the version directory and use the
+`.mb_extraction_status_<version>.json` filename. State markers are runtime data and must
+not be committed to this repository.
 
-- `test_message_batcher_basic` - Verifies state marker integration
-- `test_message_batcher_respects_batch_size` - Batch size handling
-- `test_message_batcher_timeout_flush` - Timeout flush behavior
-
-## Performance Impact
-
-- **Save Frequency**: Every 5,000 records
-- **Save Operation**: ~1-2ms per save (async, non-blocking)
-- **Typical Files**:
-  - Masters: ~2.5M records → ~506 saves
-  - Releases: ~19M records → ~3,790 saves
-- **Total Overhead**: \<10 seconds per large file (negligible)
-
-## Configuration
-
-The extractor uses:
-
-- `state_save_interval = 5000` records
-
-Can be adjusted if needed, but 5,000 provides good balance between:
-
-- **Higher values**: Less I/O overhead, more potential lost progress
-- **Lower values**: More I/O overhead, less potential lost progress
-
-## Related Documentation
-
-- [State Marker System](state-marker-system.md) - Overall state marker architecture
-- [Main README](../README.md) - This document is also referenced from the project README
+See [State-marker system](state-marker-system.md) for version decisions, checksum
+invalidation, and file locations.

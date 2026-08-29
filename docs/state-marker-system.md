@@ -1,404 +1,74 @@
-# State Marker System
+# State-marker system
 
-The state marker system tracks extraction progress across all phases, allowing the extractor to intelligently decide whether to re-process, continue, or skip processing when restarted. The system supports both Discogs and MusicBrainz data sources with separate marker files.
+State markers persist download and processing status for each source version. They let
+a restarted process skip completed files, re-run incomplete work, report durable
+progress, and avoid treating a previously completed version as new.
 
-## Overview
+## Marker locations
 
-Each data version gets its own state marker file:
+| Source | Version example | Marker path |
+| --- | --- | --- |
+| Discogs | `20260101` | `{DISCOGS_ROOT}/.extraction_status_20260101.json` |
+| MusicBrainz | `20260326-001001` | `{MUSICBRAINZ_ROOT}/20260326-001001/.mb_extraction_status_20260326-001001.json` |
 
-- **Discogs**: `.extraction_status_{version}.json` (e.g., `.extraction_status_20260101.json`)
-- **MusicBrainz**: `.mb_extraction_status_{version}.json` (e.g., `.mb_extraction_status_20260326.json`)
+Markers contain four sections: `download_phase`, `processing_phase`,
+`publishing_phase`, and `summary`. Phase statuses are `pending`, `in_progress`,
+`completed`, or `failed`.
 
-Each marker tracks:
-
-1. **Download Phase** - File downloads and checksums
-1. **Processing Phase** - Which files are being/have been processed
-1. **Publishing Phase** - Messages sent to RabbitMQ
-1. **Overall Status** - Decision logic for restart behavior
-
-## File Structure
-
-```json
-{
-  "metadata_version": "1.0",
-  "last_updated": "2026-01-31T12:34:56.789Z",
-  "current_version": "20260101",
-
-  "download_phase": {
-    "status": "completed",
-    "started_at": "2026-01-31T12:00:00.000Z",
-    "completed_at": "2026-01-31T12:15:00.000Z",
-    "files_downloaded": 4,
-    "files_total": 4,
-    "bytes_downloaded": 5234567890,
-    "downloads_by_file": {
-      "discogs_20260101_artists.xml.gz": {
-        "status": "completed",
-        "bytes_downloaded": 1234567890,
-        "started_at": "2026-01-31T12:00:00.000Z",
-        "completed_at": "2026-01-31T12:05:00.000Z",
-        "checksum": "a1b2c3..."
-      }
-    },
-    "errors": []
-  },
-
-  "processing_phase": {
-    "status": "in_progress",
-    "started_at": "2026-01-31T12:15:00.000Z",
-    "completed_at": null,
-    "files_processed": 2,
-    "files_total": 4,
-    "records_extracted": 1234567,
-    "current_file": "discogs_20260101_releases.xml.gz",
-    "progress_by_file": {
-      "discogs_20260101_artists.xml.gz": {
-        "status": "completed",
-        "records_extracted": 500000,
-        "messages_published": 5000,
-        "started_at": "2026-01-31T12:15:00.000Z",
-        "completed_at": "2026-01-31T12:20:00.000Z",
-        "source_checksum": "a1b2c3..."
-      },
-      "discogs_20260101_labels.xml.gz": {
-        "status": "completed",
-        "records_extracted": 250000,
-        "messages_published": 2500,
-        "started_at": "2026-01-31T12:20:00.000Z",
-        "completed_at": "2026-01-31T12:25:00.000Z"
-      },
-      "discogs_20260101_masters.xml.gz": {
-        "status": "in_progress",
-        "records_extracted": 150000,
-        "messages_published": 1500,
-        "started_at": "2026-01-31T12:25:00.000Z",
-        "completed_at": null
-      }
-    },
-    "errors": []
-  },
-
-  "publishing_phase": {
-    "status": "in_progress",
-    "messages_published": 1234567,
-    "batches_sent": 12345,
-    "errors": [],
-    "last_amqp_heartbeat": "2026-01-31T12:34:50.000Z"
-  },
-
-  "summary": {
-    "overall_status": "in_progress",
-    "total_duration_seconds": null,
-    "files_by_type": {
-      "artists": "completed",
-      "labels": "completed",
-      "masters": "in_progress",
-      "releases": "pending"
-    }
-  }
-}
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> InProgress: phase starts
+    InProgress --> Completed: all required work succeeds
+    InProgress --> Failed: phase error
+    Failed --> InProgress: restart continues unfinished files
+    Completed --> InProgress: verified source bytes changed
 ```
 
-## Phase Status Values
+## Restart decisions
 
-- `pending` - Not started yet
-- `in_progress` - Currently running
-- `completed` - Successfully finished
-- `failed` - Encountered an error
+On startup the source loop chooses one of these actions:
 
-## Processing Decisions
+| Action | Trigger | Behavior |
+| --- | --- | --- |
+| Fresh run | Forced run, no marker, or an unreadable marker | Build a fresh marker and process every file. |
+| Reprocess | An interrupted or failed Discogs download before any file completed | Replace the loaded marker and process every file. |
+| Continue | Processing is pending, in progress, or failed; or a Discogs download was interrupted after some files completed | Skip completed files and process every other file from its beginning. |
+| Skip | The version summary is completed | Publish nothing and wait for the next check or trigger. |
 
-When the extractor restarts, it checks the state marker and makes one of three decisions:
+Resume is file-granular. Periodic counts are operational checkpoints, not parser offsets;
+an `in_progress` file is republished from record one. See [Periodic state-marker
+checkpoints](state-marker-periodic-updates.md).
 
-### 1. Reprocess (Start Over)
+## Source-byte provenance
 
-**Triggered when:**
+For Discogs, the marker links a completed processing result to the verified bytes that
+produced it:
 
-- Download phase failed or was interrupted **and** no file has finished processing yet
-- State marker is corrupted
-- Force reprocess flag is set
+- `download_phase.downloads_by_file[file].checksum` identifies the file currently on
+  disk.
+- `processing_phase.progress_by_file[file].source_checksum` identifies the bytes used
+  by that processing attempt.
 
-**Action:**
+If a later download verifies different bytes for the same filename, the completed
+processing entry is removed, its counters are subtracted, and the file is re-queued.
+Identical bytes do not force a reparse. Older markers with unknown provenance remain
+loadable and are not invalidated speculatively.
 
-- Delete old files
-- Re-download all data
-- Re-process from scratch
+## Durable writes
 
-### 2. Continue (Resume)
+Marker saves use a temporary sibling file, synchronize its contents, atomically rename
+it, and then synchronize the parent directory. A reader therefore never observes a
+partially written JSON document, and completed phase transitions survive ordinary
+process crashes and power-loss ordering hazards supported by the filesystem.
 
-**Triggered when:**
+If a marker cannot be read or parsed, the loader logs a warning and returns no marker;
+the source loop then starts from a fresh state. Marker files contain operational state,
+not configuration, and must stay in mounted data roots rather than Git.
 
-- Processing phase is `in_progress`
-- Processing phase `failed` but can recover
-- Download phase failed or was interrupted but at least one file already finished
-  processing — downloads are idempotent and self-heal via checksum verification, so
-  completed processing progress is never discarded to recover a download
+## Completion signals
 
-**Action:**
-
-- Skip completed files
-- Resume processing unfinished files
-- Continue from last checkpoint
-
-### Byte-image provenance (re-download invalidation)
-
-The download and processing phases are independent state machines keyed by the same
-filename, so they need one explicit invariant linking them: **a processing status is
-valid only for the byte-image it was computed from.**
-
-- `download_phase.downloads_by_file[file].checksum` — SHA-256 of the bytes currently on
-  disk, recorded once they are verified.
-- `processing_phase.progress_by_file[file].source_checksum` — the checksum that was in
-  effect when this file's processing started.
-
-When the downloader materializes bytes for a file (whether freshly downloaded or already
-present), it calls `file_bytes_verified()`. If that file has a `completed` processing
-status whose `source_checksum` differs from the new checksum, the entry is dropped:
-`pending_files()` then re-queues the file, `files_processed` and the record counts are
-corrected, and a `completed` version is reopened so it is not skipped.
-
-This matters when the downloader forces a re-download because the locally trusted
-checksum disagrees with the Discogs-published `CHECKSUM`: without invalidation, the
-corrected bytes would be skipped by resume and never published for that version.
-
-Invalidation is deliberately narrow — it fires only when both checksums are known and
-they differ. Re-downloading identical bytes (e.g. an operator deleted a processed
-`.xml.gz` to reclaim disk) does not force a reparse, and markers written before these
-fields existed have unknown provenance and are left untouched.
-
-### 3. Skip (Already Complete)
-
-**Triggered when:**
-
-- Overall status is `completed`
-- All files successfully processed
-- No new version available
-
-**Action:**
-
-- Log "already processed" message
-- Wait for next periodic check
-- No processing occurs
-
-## Usage in Extractor
-
-```rust
-use crate::state_marker::{StateMarker, ProcessingDecision};
-
-// Load existing state or create new
-let marker_path = StateMarker::file_path(&config.discogs_root, &version);
-let mut marker = StateMarker::load(&marker_path)
-    .await?
-    .unwrap_or_else(|| StateMarker::new(version.clone()));
-
-// Check what to do
-match marker.should_process() {
-    ProcessingDecision::Skip => {
-        info!("✅ Version {} already processed, skipping", version);
-        return Ok(true);
-    }
-    ProcessingDecision::Reprocess => {
-        warn!("⚠️ Will re-download and re-process");
-        marker = StateMarker::new(version.clone());
-    }
-    ProcessingDecision::Continue => {
-        info!("🔄 Will continue processing");
-    }
-}
-
-// Track download phase
-marker.start_download(files.len());
-for file in &files {
-    download_file(&file).await?;
-    marker.file_downloaded(file.size);
-    marker.save(&marker_path).await?;
-}
-marker.complete_download();
-marker.save(&marker_path).await?;
-
-// Track processing phase
-marker.start_processing(files.len());
-marker.save(&marker_path).await?;
-
-for file in &files {
-    // Skip if already completed
-    if marker.processing_phase.progress_by_file
-        .get(file)
-        .map(|s| s.status == PhaseStatus::Completed)
-        .unwrap_or(false)
-    {
-        info!("✅ Skipping already processed file: {}", file);
-        continue;
-    }
-
-    marker.start_file_processing(&file);
-    marker.save(&marker_path).await?;
-
-    // Process file...
-    let records = process_file(&file).await?;
-
-    marker.complete_file_processing(&file, records);
-    marker.save(&marker_path).await?;
-}
-
-marker.complete_processing();
-marker.complete_extraction();
-marker.save(&marker_path).await?;
-```
-
-## Usage in Python Services
-
-The `StateMarker` class from `common` is also available to Python services for reading extraction state:
-
-```python
-from pathlib import Path
-from common import StateMarker, ProcessingDecision
-
-# Load existing state
-marker_path = StateMarker.file_path(Path(config.discogs_root), version)
-marker = StateMarker.load(marker_path)
-
-# Check extraction status
-decision = marker.should_process()
-if decision == ProcessingDecision.SKIP:
-    logger.info("✅ Version already processed, skipping")
-```
-
-## Benefits
-
-1. **Resilience** - Survive restarts without losing progress
-1. **Efficiency** - Don't re-process already completed files
-1. **Observability** - Clear view of extraction status
-1. **Debugging** - Detailed error tracking per phase
-1. **Idempotency** - Safe to restart at any time
-
-## File Locations
-
-State markers are stored in the respective data root directories:
-
-### Discogs State Markers
-
-```
-/discogs-data/
-├── discogs_20260101_artists.xml.gz
-├── discogs_20260101_labels.xml.gz
-├── discogs_20260101_masters.xml.gz
-├── discogs_20260101_releases.xml.gz
-├── .discogs_metadata.json              # Download checksums (existing)
-├── .processing_state.json              # Simple boolean flags (deprecated)
-└── .extraction_status_20260101.json    # State marker
-```
-
-### MusicBrainz State Markers
-
-```
-/musicbrainz-data/
-└── 20260326-001001/                       # Per-version subdirectory
-    ├── artist.jsonl.xz
-    ├── label.jsonl.xz
-    ├── release-group.jsonl.xz
-    ├── release.jsonl.xz
-    └── .mb_extraction_status_20260326-001001.json  # MusicBrainz state marker
-```
-
-MusicBrainz dumps and their marker live in a per-version subdirectory (e.g. `/musicbrainz-data/20260326-001001/`), since the extractor downloads each dated dump into its own directory. The marker uses the `.mb_extraction_status_{version}.json` naming convention to distinguish from Discogs markers. It follows the same internal structure and status values as Discogs markers, but tracks `release-groups` in place of `masters` (artists, labels, release-groups, releases instead of artists, labels, masters, releases).
-
-## Version-Specific Tracking
-
-Each data source version gets its own state marker:
-
-**Discogs** (monthly releases):
-
-- `.extraction_status_20260101.json` - January 2026 data
-- `.extraction_status_20251201.json` - December 2025 data
-- `.extraction_status_20251101.json` - November 2025 data
-
-**MusicBrainz** (twice-weekly releases):
-
-- `.mb_extraction_status_20260326.json` - March 26, 2026 dump
-- `.mb_extraction_status_20260322.json` - March 22, 2026 dump
-
-This allows:
-
-- Multiple versions to coexist
-- Easy cleanup of old versions
-- Clear version history
-- Independent tracking of Discogs and MusicBrainz extraction progress
-
-## Migration Path
-
-The new state marker system works alongside existing tracking:
-
-1. `.discogs_metadata.json` - Still used for download checksums
-1. `.processing_state.json` - Deprecated, replaced by state marker
-1. `.extraction_status_*.json` - New comprehensive tracking
-
-## Error Handling
-
-If a state marker file is corrupted:
-
-1. Log warning
-1. Return `None` from load
-1. Create new marker
-1. Continue processing
-
-This ensures the system is always resilient to state corruption.
-
-## Testing
-
-Both Rust and Python implementations have comprehensive tests:
-
-**Rust:**
-
-```bash
-cd extractor
-cargo test state_marker
-```
-
-**Python:**
-
-```bash
-uv run pytest tests/common/test_state_marker.py -v
-```
-
-## Periodic Progress Updates
-
-Both extractors save state periodically during file processing to enable crash recovery:
-
-### Update Frequency
-
-- **Every 5,000 records**: State marker file is updated with current progress
-- **Non-blocking**: State saves don't interrupt processing
-- **Error handling**: Failed saves are logged but don't stop processing
-
-### Implementation
-
-**Extractor** (`extractor.rs`):
-
-```rust
-// In message_batcher function
-if total_records % state_save_interval as u64 == 0 {
-    let mut marker = state_marker.lock().await;
-    marker.update_file_progress(&file_name, total_records, total_records);
-    marker.save(&marker_path).await?;
-}
-```
-
-### Benefits
-
-1. **Crash Recovery**: Resume from last checkpoint (every 5,000 records)
-1. **Progress Monitoring**: Real-time progress visibility in state file
-1. **Minimal Overhead**: ~1-2ms per save, negligible performance impact
-1. **Production-Ready**: Tested with multi-million record files
-
-For implementation details, see [State Marker Periodic Updates](state-marker-periodic-updates.md).
-
-## Future Enhancements
-
-Potential improvements:
-
-1. **Resume Within File** - Resume from exact position within very large files (>50M records)
-1. **Metrics** - Track processing speed over time
-1. **Alerts** - Notify on phase failures
-1. **Cleanup** - Auto-remove old state markers
-1. **Compression** - Gzip state markers for large extractions
+A file is marked complete only after its `file_complete` event is accepted by the
+broker. An extraction is marked complete only after every file succeeds and the
+`extraction_complete` event is accepted. This ordering prevents a restart from skipping
+a completion signal that was never delivered.
