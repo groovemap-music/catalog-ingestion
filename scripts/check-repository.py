@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
+AUTOMATION_REVISION = "2f34a4da5c552bc23c75edd3d8d81be0a4b3271c"
 
 
 def require(condition: bool, message: str) -> None:
@@ -132,5 +134,80 @@ for documentation_index in (ROOT / "README.md", ROOT / "docs" / "README.md"):
     check_local_markdown_links(documentation_index)
 
 check_conceptual_diagrams()
+
+ci_workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+automation_ci = (
+    "groovemap-music/automation/.github/workflows/reusable-ci.yml@"
+    f"{AUTOMATION_REVISION}"
+)
+automation_release = (
+    "groovemap-music/automation/.github/workflows/reusable-release.yml@"
+    f"{AUTOMATION_REVISION}"
+)
+
+require(f"uses: {automation_ci}" in ci_workflow, "CI must pin the reviewed shared workflow commit")
+require(f"uses: {automation_release}" in release_workflow, "release must pin the reviewed shared workflow commit")
+require(
+    re.search(r"(?m)^  attestations: write$", release_workflow) is not None,
+    "release caller must grant artifact and image attestation permission",
+)
+require("pull_request:" in ci_workflow, "ordinary and Dependabot pull requests must share the pull_request trigger")
+require("pull_request_target" not in ci_workflow, "pull_request_target is forbidden")
+require(not re.search(r"github\.actor|dependabot\[bot\]", ci_workflow, re.IGNORECASE), "CI must not branch on the pull-request actor")
+require("fallback-command" not in ci_workflow, "CI must not provide a reduced validation fallback")
+require("secrets: inherit" not in ci_workflow, "CI must map only the Codecov secret it consumes")
+
+jobs_block = ci_workflow.split("\njobs:\n", maxsplit=1)[1]
+require(
+    re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", jobs_block, re.MULTILINE) == ["required"],
+    "normal and Dependabot pull requests must use one identical required job graph",
+)
+for marker in (
+    "language: rust",
+    "setup-command: just setup",
+    "check-command: just check",
+    "coverage-command: just coverage",
+    "audit-command: just audit",
+    "license-command: just license-check",
+    "secret-scan-command: just secret-scan",
+    "package-command: just build",
+    "install-command: just install-check",
+    "image-command: just image",
+    "coverage-files: lcov.info",
+    "upload-codecov: true",
+    "CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}",
+):
+    require(marker in ci_workflow, f"CI contract marker is missing: {marker}")
+
+for workflow in (ci_workflow, release_workflow):
+    for reference in re.findall(r"^\s*uses:\s*([^\s#]+)", workflow, re.MULTILINE):
+        require(
+            re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}", reference)
+            is not None,
+            f"workflow reference must use a full commit SHA: {reference}",
+        )
+
+tracked_paths = {
+    path
+    for path in (
+        subprocess.run(
+            ["git", "ls-files"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+    )
+}
+require(not any("renovate" in path.lower() for path in tracked_paths), "Renovate configuration must not be present")
+require(not any("claude" in path.lower() for path in tracked_paths), "legacy Claude automation must not be present")
+require("lcov.info" not in tracked_paths, "generated coverage evidence must not be tracked")
+
+justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+require("-C link-arg=-fuse-ld=bfd" in justfile, "Linux coverage must override the crashing bundled rust-lld linker")
+require("cargo llvm-cov --all-features --locked --lcov" in justfile, "Rust coverage must remain enabled")
+rust_toolchain = (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
+require("llvm-tools-preview" in rust_toolchain, "the pinned Rust toolchain must install coverage support noninteractively")
 
 print("repository boundary and metadata checks passed")

@@ -1,5 +1,6 @@
 /target/
 /dist/
+/lcov.info
 /.mise.local.toml
 /.env
 /.env.*
@@ -9,4 +10,3 @@
 *.p12
 *.age
 .DS_Store
-
