@@ -94,7 +94,8 @@ require('org.opencontainers.image.title="catalog-ingestion"' in dockerfile, "con
 require("RUST_EXTRACTOR_CONFIG" not in dockerfile, "unused legacy extractor configuration variable must stay removed")
 
 release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-require("image-name: catalog-ingestion" in release_workflow, "release workflow must publish the repository-named image")
+require("repository-name: catalog-ingestion" in release_workflow, "release workflow must use the repository identity")
+require("publish-image: true" in release_workflow, "release workflow must publish the repository-named image")
 
 polite_http = (ROOT / "src" / "polite_http.rs").read_text(encoding="utf-8")
 require("groovemap-catalog-ingestion/" in polite_http, "default User-Agent must identify GrooveMap catalog ingestion")
