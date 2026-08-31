@@ -13,11 +13,35 @@ from typing import Any
 
 
 REPOSITORY = "groovemap-music/catalog-ingestion"
-ARCHIVE_COMMIT = "4d0ecef0a798aab2f769cb5eb2e93982236f4f91"
-PRIVATE_PATH = re.compile(r"(^|/)(?:\.planning(?:/|$)|docs/superpowers/(?:plans|specs)(?:/|$))")
+ARCHIVE_COMMIT = "daf82a149aaa382b3cebbd4b43d3c82e53d4128e"
+PRIVATE_PLANNING_ROOTS = (".planning", "docs/superpowers", "docs/specs")
+PRESERVED_PUBLIC_PATH = "docs/extraction.md"
+# This migration-only index was created in the split repository and therefore is not part
+# of the original monorepo corpus captured by planning-archive. Pin all three identities so
+# changed content at the same path cannot bypass archive coverage.
+REVIEWED_NON_ARCHIVAL_BLOBS = frozenset(
+    {
+        (
+            "docs/superpowers/README.md",
+            "ca3b96ae188d756ef40549035cce987742e1ddcc",
+            "fef85bb4804255946e49000752761e5480ded906d2109973d5e916e57e77925c",
+        )
+    }
+)
 CREDENTIAL_PATH = re.compile(r"(^|/)(?:\.env(?:\.|$)|secrets?(?:/|$))|\.(?:age|key|p12|pem)$", re.IGNORECASE)
 GIT = shutil.which("git")
 assert GIT is not None, "git is required"
+
+
+def is_private_planning_path(path: str) -> bool:
+    """Return whether a Git object path belongs to a private planning tree."""
+    return any(path == root or path.startswith(f"{root}/") for root in PRIVATE_PLANNING_ROOTS)
+
+
+def require_reviewed_non_archival_blob(path: str, object_id: str, digest: str) -> None:
+    """Fail closed unless one non-archival blob has its exact reviewed identity."""
+    identity = (path, object_id, digest)
+    assert identity in REVIEWED_NON_ARCHIVAL_BLOBS, f"private blob is not mapped to the reviewed archive: {path} {object_id}"
 
 
 def run_git(repository: Path, *arguments: str, input_text: str | None = None) -> str:
@@ -105,7 +129,7 @@ def build_attestation(
     private_blobs = sorted(
         (object_id, path)
         for object_id, path in source_objects
-        if path and PRIVATE_PATH.search(path) and source_types.get(object_id) == "blob"
+        if path and is_private_planning_path(path) and source_types.get(object_id) == "blob"
     )
     assert private_blobs, "source repository contains no private planning blobs to map"
 
@@ -116,14 +140,21 @@ def build_attestation(
         if occurrence["repository"] == REPOSITORY
     }
     mapped_blobs = []
+    boundary_only_blobs = []
     for object_id, path in private_blobs:
         digest = sha256_blob(candidate_source, object_id)
-        assert (path, object_id, digest) in archived, f"private blob is not mapped to the reviewed archive: {path} {object_id}"
-        mapped_blobs.append({"git_blob_oid": object_id, "path": path, "sha256": digest})
+        record = {"git_blob_oid": object_id, "path": path, "sha256": digest}
+        if (path, object_id, digest) in archived:
+            mapped_blobs.append(record)
+            continue
+        require_reviewed_non_archival_blob(path, object_id, digest)
+        boundary_only_blobs.append(record)
 
     sanitized_objects = reachable_objects(sanitized_repository)
     forbidden_paths = sorted(
-        path for _, path in sanitized_objects if path and (PRIVATE_PATH.search(path) or CREDENTIAL_PATH.search(path))
+        path
+        for _, path in sanitized_objects
+        if path and (is_private_planning_path(path) or CREDENTIAL_PATH.search(path))
     )
     assert not forbidden_paths, f"sanitized object graph retains forbidden paths: {', '.join(forbidden_paths)}"
     run_git(sanitized_repository, "fsck", "--full", "--strict")
@@ -133,6 +164,10 @@ def build_attestation(
     assert mapped_source and set(mapped_source) != {"0"}, "candidate commit is absent from the old-to-new map"
     sanitized_tree = run_git(sanitized_repository, "rev-parse", f"{mapped_source}^{{tree}}")
     assert run_git(sanitized_repository, "rev-parse", "refs/heads/main") == mapped_source, "sanitized main is not the mapped candidate"
+
+    source_public_blob = run_git(candidate_source, "rev-parse", f"{source_commit}:{PRESERVED_PUBLIC_PATH}")
+    sanitized_public_blob = run_git(sanitized_repository, "rev-parse", f"{mapped_source}:{PRESERVED_PUBLIC_PATH}")
+    assert source_public_blob == sanitized_public_blob, f"public guide changed during rewrite: {PRESERVED_PUBLIC_PATH}"
 
     backup_refs = run_git(backup_repository, "for-each-ref", "--format=%(refname) %(objectname)").splitlines()
     sanitized_refs = run_git(sanitized_repository, "for-each-ref", "--format=%(refname) %(objectname)").splitlines()
@@ -146,6 +181,8 @@ def build_attestation(
             "commit": ARCHIVE_COMMIT,
             "mapped_private_blob_count": len(mapped_blobs),
             "mapped_private_blobs": mapped_blobs,
+            "removed_non_archival_blob_count": len(boundary_only_blobs),
+            "removed_non_archival_blobs": boundary_only_blobs,
         },
         "candidate": {
             "source_commit": source_commit,
@@ -161,6 +198,12 @@ def build_attestation(
             "sanitized_refs": sorted(sanitized_refs),
             "scan_scope": "every object reachable from every candidate ref",
         },
+        "preserved_public_paths": [
+            {
+                "git_blob_oid": source_public_blob,
+                "path": PRESERVED_PUBLIC_PATH,
+            }
+        ],
         "external_approval_gates": [
             {
                 "approved": False,
