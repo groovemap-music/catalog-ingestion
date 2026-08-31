@@ -123,8 +123,8 @@ for forbidden in (ROOT / "target", ROOT / "dist", ROOT / ".env"):
 
 for private_planning in (
     ROOT / ".planning",
-    ROOT / "docs" / "superpowers" / "plans",
-    ROOT / "docs" / "superpowers" / "specs",
+    ROOT / "docs" / "superpowers",
+    ROOT / "docs" / "specs",
 ):
     require(
         not private_planning.exists(),
