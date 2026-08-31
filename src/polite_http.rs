@@ -192,6 +192,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn default_user_agent_uses_public_repository_identity() {
+        assert_eq!(
+            DEFAULT_USER_AGENT,
+            concat!("groovemap-catalog-ingestion/", env!("CARGO_PKG_VERSION"), " (+https://github.com/groovemap-music/catalog-ingestion)")
+        );
+    }
+
+    #[tokio::test]
+    async fn default_user_agent_is_sent_to_upstream_services() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/identity")
+            .match_header("user-agent", DEFAULT_USER_AGENT)
+            .with_status(200)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let client = PoliteClient::new(fast_test_config()).unwrap();
+        let response = client.get(&format!("{}/identity", server.url())).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        mock.assert_async().await;
+    }
+
     #[tokio::test]
     async fn polite_gap_is_observed_between_requests() {
         let mut server = mockito::Server::new_async().await;

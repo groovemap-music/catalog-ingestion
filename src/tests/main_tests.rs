@@ -57,11 +57,16 @@ fn test_ascii_art_display_musicbrainz() {
 fn test_startup_banner_message_reflects_source() {
     // discogsography-i7sa regression: the startup banner must name the actual --source
     // mode, not unconditionally claim "Discogs" regardless of which container is running.
-    assert!(startup_banner_message(Source::Discogs).contains("Discogs"));
-    assert!(!startup_banner_message(Source::Discogs).contains("MusicBrainz"));
+    assert_eq!(startup_banner_message(Source::Discogs), "🚀 Starting GrooveMap catalog-ingestion for Discogs");
+    assert_eq!(startup_banner_message(Source::MusicBrainz), "🚀 Starting GrooveMap catalog-ingestion for MusicBrainz");
+}
 
-    assert!(startup_banner_message(Source::MusicBrainz).contains("MusicBrainz"));
-    assert!(!startup_banner_message(Source::MusicBrainz).contains("Discogs"));
+#[test]
+fn test_ascii_art_uses_repository_identity() {
+    let banner = ascii_art();
+    assert!(banner.contains("catalog-ingestion"));
+    assert!(!banner.to_ascii_lowercase().contains("discogsography"));
+    assert!(!banner.contains("rust-extractor"));
 }
 
 #[test]

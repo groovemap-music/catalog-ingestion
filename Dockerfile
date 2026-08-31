@@ -39,7 +39,7 @@ ARG UID=1000
 ARG GID=1000
 
 LABEL org.opencontainers.image.title="catalog-ingestion" \
-      org.opencontainers.image.description="Discogs and MusicBrainz catalog extraction and event publishing" \
+      org.opencontainers.image.description="GrooveMap Discogs and MusicBrainz catalog ingestion and event publishing" \
       org.opencontainers.image.authors="Robert Wlodarczyk <robert@simplicityguy.com>" \
       org.opencontainers.image.url="https://groovemap.music" \
       org.opencontainers.image.documentation="https://github.com/groovemap-music/catalog-ingestion/blob/main/README.md" \
@@ -77,7 +77,6 @@ USER ${UID}:${GID}
 
 # Set environment variables
 ENV LOG_LEVEL=INFO
-ENV RUST_EXTRACTOR_CONFIG=/config.toml
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \

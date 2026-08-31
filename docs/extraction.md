@@ -1,34 +1,103 @@
-# History-preserving extraction
+# Extraction architecture
 
-The source was the migration branch `wt/bead/issue/discogsography-2kpm.10` at
-`e5b83fd5e56a2dfd00089b307fe6f2bd5904c245` in the unchanged monorepo
-`/Users/Robert/workspaces/github/SimplicityGuy/discogsography`.
+The `extractor` binary supports two source modes. Each mode owns source acquisition,
+parsing, state tracking, and publication to source-specific RabbitMQ fanout exchanges.
+Consumers are deliberately outside this repository; they depend on the versioned
+[catalog event contract](../contracts/catalog-events/README.md), not on producer source.
 
-The reproducible extraction was performed in a disposable clone:
+Select a mode with `--source discogs|musicbrainz` or `EXTRACTOR_SOURCE`. The default is
+Discogs.
 
-```bash
-git clone --no-local --single-branch \
-  --branch wt/bead/issue/discogsography-2kpm.10 \
-  /Users/Robert/workspaces/github/SimplicityGuy/discogsography \
-  catalog-ingestion
-cd catalog-ingestion
-git filter-repo --force \
-  --path extractor/ \
-  --path Cargo.lock \
-  --path LICENSE \
-  --path docs/state-marker-system.md \
-  --path tests/extractor/test_dockerfile_uid.py \
-  --path-rename extractor/: \
-  --path-rename tests/extractor/:tests/repository/
-git branch -M main
+```mermaid
+flowchart LR
+    subgraph Discogs
+        DX[Monthly XML dumps] --> DC[Published checksum verification]
+        DC --> DP[Streaming XML parser]
+        DP --> QR[Optional skip, filter, and validation rules]
+        QR --> DN[Always-on normalization and content hash]
+    end
+
+    subgraph MusicBrainz
+        MI[Versioned dump index] --> MA[Four tar.xz archives]
+        MA --> MC[Streaming checksum verification and JSONL extraction]
+        MC --> MP[Streaming JSONL parser and cross-reference enrichment]
+    end
+
+    DN --> CE[Catalog event envelope]
+    MP --> CE
+    CE --> MQ[(Source-specific RabbitMQ fanout exchanges)]
 ```
 
-The filtered contract-boundary source commit is
-`9d029e5eb5e4602ac9be5d9c6a087c4481dc24ff`; it corresponds to source commit
-`3219ebf55e9bed9a66e4d54222139fa878e4268a`. The initial filtered history contains
-292 commits and no tags. Migration scaffolding is added as one later commit.
+## Discogs
 
-The current tree is MIT licensed by owner decision. Historical revisions preserve their
-then-applicable license text. The original monorepo and its refs were not rewritten or
-deleted.
+Discogs mode discovers the newest monthly artists, labels, masters, and releases dumps.
+It downloads missing or changed files, verifies their bytes against the upstream
+`CHECKSUM` file when available, and persists download metadata after each file.
 
+Parsed XML records may pass through the optional [extraction rules
+pipeline](extraction-rules-guide.md). Regardless of whether rules are enabled, every
+published Discogs record passes through the producer normalizer and receives a SHA-256
+content hash computed from the normalized payload. See the [normalization
+decision](decisions/0001-producer-normalization-boundary.md).
+
+## MusicBrainz
+
+MusicBrainz mode discovers the latest `YYYYMMDD-HHMMSS` directory at the configured dump
+URL. For each entity it streams the `.tar.xz` response through SHA-256 verification,
+extracts only the expected `mbdump/<entity>` entry, recompresses it as `.jsonl.xz`, and
+atomically exposes the final file only after verification succeeds. Partial `.tmp` files
+are never treated as complete.
+
+The four downloaded entities are artist, label, release-group, and release. A first pass
+over artists builds an MBID-to-Discogs-ID map used to enrich artist relationship targets.
+Entity-level Discogs URL relations become these optional cross-reference fields:
+
+| MusicBrainz entity | Published cross-reference |
+| --- | --- |
+| artist | `discogs_artist_id` |
+| label | `discogs_label_id` |
+| release group | `discogs_master_id` |
+| release | `discogs_release_id` |
+
+Records without a Discogs cross-reference are still published. Storage and graph
+selection policies belong to consumer repositories.
+
+`MUSICBRAINZ_DUMP_URL` defaults to the MetaBrainz JSON dump index and
+`MUSICBRAINZ_ROOT` defaults to `/musicbrainz-data`. `PERIODIC_CHECK_DAYS` controls how
+often both source loops look for a newer version.
+
+## Published entities
+
+Exchange names follow `{prefix}-{entity}` and exchanges are fanout:
+
+| Source | Default prefix | Entities |
+| --- | --- | --- |
+| Discogs | `groovemap-discogs` | `artists`, `labels`, `masters`, `releases` |
+| MusicBrainz | `groovemap-musicbrainz` | `artists`, `labels`, `release-groups`, `releases` |
+
+Override the prefixes with `DISCOGS_EXCHANGE_PREFIX` and
+`MUSICBRAINZ_EXCHANGE_PREFIX`. The contract is authoritative for names and envelope
+fields.
+
+## Source coordination
+
+Before each initial, periodic, or manually triggered run, MusicBrainz waits while a
+reachable, parseable Discogs health endpoint reports `running`. An unparseable response
+fails open immediately; an unreachable endpoint fails open after ten attempts with
+backoff. This prioritizes Discogs and normally reduces simultaneous peak load, but it is
+not a publication-order guarantee or a distributed mutual-exclusion lock. The behavior
+and failure trade-offs are recorded in the [Discogs-first coordination
+decision](decisions/0002-discogs-first-musicbrainz-coordination.md).
+
+## Health and triggers
+
+Each process exposes the configured health port (default `8000`):
+
+- `GET /health` — source progress and current extraction status.
+- `GET /metrics` — machine-readable counters.
+- `GET /ready` — readiness derived from extractor state.
+- `POST /trigger` — request a run; `{"force_reprocess": true}` starts that run from a
+  fresh in-memory marker which replaces the saved version state as work progresses.
+
+Credentials, service URLs, mounted data roots, and container topology are deployment
+concerns and must be supplied outside this repository.

@@ -57,16 +57,11 @@ fn test_environment_variable_defaults() {
     // Test that environment variables have sensible defaults
     unsafe {
         env::remove_var("LOG_LEVEL");
-        env::remove_var("RUST_EXTRACTOR_CONFIG");
         env::remove_var("FORCE_REPROCESS");
     }
 
     let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "INFO".to_string());
     assert_eq!(log_level, "INFO");
-
-    // Config file should default to config.toml
-    let config_file = env::var("RUST_EXTRACTOR_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
-    assert_eq!(config_file, "config.toml");
 
     // Force reprocess should default to false (empty env var)
     let force_reprocess = env::var("FORCE_REPROCESS").is_ok();
