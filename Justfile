@@ -30,6 +30,7 @@ test:
     cargo test --all-features --locked
 
 coverage: bootstrap
+    cargo clean
     if [[ "$(uname -s)" == Linux ]]; then export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-C link-arg=-fuse-ld=bfd"; fi; mise exec {{cargo_llvm_cov_tool}} -- cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
 
 contract:
