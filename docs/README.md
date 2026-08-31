@@ -12,6 +12,8 @@
   frequency, monitoring, and recovery guarantees.
 - [Runtime identity and compatibility](runtime-identity.md) — canonical GrooveMap names
   and the internal or wire identifiers retained for compatibility.
+- [Publication readiness](publication-readiness.md) — history-sanitation scope,
+  preserved public documentation, and separate operator approval gates.
 - [Catalog event contract](../contracts/catalog-events/README.md) — versioning,
   generated bindings, fixtures, and consumer promotion.
 
