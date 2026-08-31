@@ -15,7 +15,7 @@ bootstrap:
 setup: bootstrap
     cargo fetch --locked
 
-check: bootstrap format-check lint test contract-check repository-check build-check license-check secret-scan bump-preview
+check: bootstrap format-check lint test contract-check repository-check publication-history-test build-check license-check secret-scan bump-preview
 
 format:
     cargo fmt --all
@@ -40,6 +40,12 @@ contract-check:
 
 repository-check:
     python scripts/check-repository.py
+
+publication-history-test:
+    PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p 'test_publication_history.py'
+
+history-rehearsal source-repository output-directory:
+    PLANNING_ARCHIVE_REPO="${PLANNING_ARCHIVE_REPO}" bash scripts/rehearse-publication-history.sh "{{ source-repository }}" "{{ output-directory }}"
 
 build:
     cargo build --release --locked
