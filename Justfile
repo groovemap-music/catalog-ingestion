@@ -15,7 +15,7 @@ bootstrap:
 setup: bootstrap
     cargo fetch --locked
 
-check: bootstrap format-check lint test contract-check repository-check publication-history-test build-check license-check secret-scan bump-preview
+check: bootstrap format-check lint test contract-check repository-check repository-tests build-check license-check secret-scan bump-preview
 
 format:
     cargo fmt --all
@@ -44,6 +44,9 @@ repository-check:
 
 publication-history-test:
     PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p 'test_publication_history.py'
+
+repository-tests:
+    PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p 'test_*.py'
 
 history-rehearsal source-repository output-directory:
     PLANNING_ARCHIVE_REPO="${PLANNING_ARCHIVE_REPO}" bash scripts/rehearse-publication-history.sh "{{ source-repository }}" "{{ output-directory }}"
@@ -75,7 +78,7 @@ image:
     docker build --pull --tag catalog-ingestion:local .
 
 bump-preview:
-    uvx --from commitizen==4.9.1 cz bump --dry-run --changelog --yes --check-consistency
+    python scripts/check_bump_preview.py
 
 # Update Cargo metadata and changelog only; do not commit, tag, push, or publish.
 bump:
