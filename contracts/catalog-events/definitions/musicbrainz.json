@@ -1,0 +1,35 @@
+{
+  "consumers": [
+    "brainzgraphinator",
+    "brainztableinator"
+  ],
+  "fixture_payloads": {
+    "artists": {
+      "mb_type": "Person",
+      "name": "Contract Artist",
+      "sort_name": "Artist, Contract"
+    },
+    "labels": {
+      "mb_type": "Original Production",
+      "name": "Contract Label"
+    },
+    "release-groups": {
+      "mb_type": "Album",
+      "name": "Contract Release Group"
+    },
+    "releases": {
+      "name": "Contract Release"
+    }
+  },
+  "source": {
+    "default_exchange_prefix": "groovemap-musicbrainz",
+    "entities": [
+      "artists",
+      "labels",
+      "release-groups",
+      "releases"
+    ],
+    "exchange_prefix_env": "MUSICBRAINZ_EXCHANGE_PREFIX",
+    "name": "musicbrainz"
+  }
+}
