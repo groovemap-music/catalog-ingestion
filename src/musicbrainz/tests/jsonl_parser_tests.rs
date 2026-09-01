@@ -1,3 +1,5 @@
+//! MusicBrainz JSONL parser module tests.
+
 use super::*;
 
 // ─── extract_discogs_id ───────────────────────────────────────────────────────
