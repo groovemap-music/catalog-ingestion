@@ -10,7 +10,7 @@ rules, and deterministic fixtures consumed by the Python services.
 Run the generator from the repository root whenever `v1/contract.json` changes:
 
 ```bash
-python contracts/generate.py
+mise exec -- python contracts/generate.py
 ```
 
 The command writes the Rust constants, a distributable Python binding beneath

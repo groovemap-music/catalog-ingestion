@@ -12,6 +12,9 @@ if TYPE_CHECKING:
 
 
 COMMAND = (
+    "mise",
+    "exec",
+    "--",
     "uvx",
     "--from",
     "commitizen==4.9.1",

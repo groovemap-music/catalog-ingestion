@@ -28,7 +28,7 @@ if [[ -z "${archive_repository}" ]] || ! git -C "${archive_repository}" cat-file
   echo "PLANNING_ARCHIVE_REPO must contain prerequisite commit ${archive_commit}." >&2
   exit 2
 fi
-for command in git git-filter-repo python shasum; do
+for command in git git-filter-repo mise shasum; do
   if ! command -v "${command}" >/dev/null; then
     echo "Missing required command: ${command}" >&2
     exit 2
@@ -92,7 +92,7 @@ git -C "${sanitized_repository}" for-each-ref --format='%(refname)\t%(objectname
 git -C "${sanitized_repository}" rev-list --objects --all > "${output_directory}/object-graph-after.txt"
 git -C "${sanitized_repository}" fsck --full --strict > "${output_directory}/fsck.txt" 2>&1
 
-python "${script_directory}/attest-publication-history.py" \
+mise exec -- python "${script_directory}/attest-publication-history.py" \
   --backup-repository "${backup_repository}" \
   --candidate-source "${source_repository}" \
   --candidate-commit "${candidate_commit}" \
