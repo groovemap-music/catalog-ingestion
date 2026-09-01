@@ -1,9 +1,12 @@
 # Provider-split compatibility baseline
 
 This document freezes the observable `catalog-ingestion` behavior at the boundary before
-Discogs and MusicBrainz are separated into provider repositories. A split is compatible only
-when the replacement producers pass the same contract and lifecycle characterizations without
-changing the events, state, health, coordination, or shutdown behavior described below.
+Discogs and MusicBrainz are separated into provider repositories. The current combined binary
+must retain the same contract and lifecycle characterizations without changing events, state,
+health, coordination, or shutdown behavior. Repository cutover has one explicit scheduling
+exception: provider-owned containers remove the MusicBrainz-side Discogs-health compatibility
+wait and may ingest concurrently. Event, state, health, and shutdown compatibility remains
+unchanged.
 
 ## Recorded boundary
 

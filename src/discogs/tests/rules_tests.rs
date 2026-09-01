@@ -1,4 +1,6 @@
-use crate::rules::{
+//! Discogs extraction-rules module tests.
+
+use crate::discogs::rules::{
     CompiledFilterCondition, CompiledRulesConfig, QualityReport, RulesConfig, Severity, Violation, apply_filters, evaluate_rules, should_skip_record,
 };
 use serde_json::json;
@@ -675,14 +677,14 @@ fn test_quality_report_empty() {
 
 #[test]
 fn test_sanitize_filename_normal() {
-    use crate::rules::sanitize_filename;
+    use crate::discogs::rules::sanitize_filename;
     assert_eq!(sanitize_filename("12345"), "12345");
     assert_eq!(sanitize_filename("artist-name_1"), "artist-name_1");
 }
 
 #[test]
 fn test_sanitize_filename_path_traversal() {
-    use crate::rules::sanitize_filename;
+    use crate::discogs::rules::sanitize_filename;
     // Path separators stripped, `..` collapsed to `_`
     assert_eq!(sanitize_filename("../../../etc/passwd"), "___etcpasswd");
     assert_eq!(sanitize_filename("foo/bar\\baz"), "foobarbaz");
@@ -690,7 +692,7 @@ fn test_sanitize_filename_path_traversal() {
 
 #[test]
 fn test_sanitize_filename_double_dots() {
-    use crate::rules::sanitize_filename;
+    use crate::discogs::rules::sanitize_filename;
     // Dots are kept but `..` is collapsed to `_`
     assert_eq!(sanitize_filename(".."), "_");
     assert_eq!(sanitize_filename("a..b"), "a_b");
@@ -699,7 +701,7 @@ fn test_sanitize_filename_double_dots() {
 
 #[test]
 fn test_sanitize_filename_special_chars() {
-    use crate::rules::sanitize_filename;
+    use crate::discogs::rules::sanitize_filename;
     // Only alphanumeric, hyphens, underscores, and dots survive
     assert_eq!(sanitize_filename("hello world!@#$%"), "helloworld");
     assert_eq!(sanitize_filename(""), "");
@@ -709,7 +711,7 @@ fn test_sanitize_filename_special_chars() {
 
 #[test]
 fn test_flagged_writer_write_violation_and_flush() {
-    use crate::rules::{FlaggedRecordWriter, Severity, Violation};
+    use crate::discogs::rules::{FlaggedRecordWriter, Severity, Violation};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -738,7 +740,7 @@ fn test_flagged_writer_write_violation_and_flush() {
 
 #[test]
 fn test_flagged_writer_deduplicates_files() {
-    use crate::rules::{FlaggedRecordWriter, Severity, Violation};
+    use crate::discogs::rules::{FlaggedRecordWriter, Severity, Violation};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -768,7 +770,7 @@ fn test_flagged_writer_deduplicates_files() {
 
 #[test]
 fn test_flagged_writer_no_capture_files() {
-    use crate::rules::{FlaggedRecordWriter, Severity, Violation};
+    use crate::discogs::rules::{FlaggedRecordWriter, Severity, Violation};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -791,7 +793,7 @@ fn test_flagged_writer_no_capture_files() {
 
 #[test]
 fn test_flagged_writer_write_report() {
-    use crate::rules::{FlaggedRecordWriter, QualityReport, Severity};
+    use crate::discogs::rules::{FlaggedRecordWriter, QualityReport, Severity};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -819,7 +821,7 @@ fn test_flagged_writer_reports_do_not_overwrite_across_types() {
     // report was a single shared base_dir/report.txt, whichever validator
     // finished last truncated the others — including a clean file wiping out a
     // report full of errors. Per-type report files must coexist.
-    use crate::rules::{FlaggedRecordWriter, QualityReport, Severity};
+    use crate::discogs::rules::{FlaggedRecordWriter, QualityReport, Severity};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -918,7 +920,7 @@ fn test_quality_report_merge_overlapping_rules() {
 
 #[test]
 fn test_load_rejects_non_yaml_extension() {
-    use crate::rules::RulesConfig;
+    use crate::discogs::rules::RulesConfig;
     use tempfile::NamedTempFile;
 
     let temp_file = NamedTempFile::with_suffix(".json").unwrap();
@@ -932,7 +934,7 @@ fn test_load_rejects_non_yaml_extension() {
 
 #[test]
 fn test_load_rejects_nonexistent_file() {
-    use crate::rules::RulesConfig;
+    use crate::discogs::rules::RulesConfig;
     use std::path::Path;
 
     let result = RulesConfig::load(Path::new("/nonexistent/path/rules.yaml"));
@@ -941,7 +943,7 @@ fn test_load_rejects_nonexistent_file() {
 
 #[test]
 fn test_load_accepts_yml_extension() {
-    use crate::rules::RulesConfig;
+    use crate::discogs::rules::RulesConfig;
     use tempfile::NamedTempFile;
 
     let temp_file = NamedTempFile::with_suffix(".yml").unwrap();
@@ -963,7 +965,7 @@ fn test_load_accepts_yml_extension() {
 
 #[test]
 fn test_load_rejects_invalid_yaml() {
-    use crate::rules::RulesConfig;
+    use crate::discogs::rules::RulesConfig;
     use tempfile::NamedTempFile;
 
     let temp_file = NamedTempFile::with_suffix(".yaml").unwrap();
@@ -1413,7 +1415,7 @@ fn test_quality_report_no_skips_no_section() {
 
 #[test]
 fn test_flagged_writer_write_skip() {
-    use crate::rules::{FlaggedRecordWriter, SkipInfo};
+    use crate::discogs::rules::{FlaggedRecordWriter, SkipInfo};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -1771,7 +1773,7 @@ fn test_quality_report_format_summary_skipped_only_no_violations() {
 
 #[test]
 fn test_flagged_writer_write_skip_deduplication() {
-    use crate::rules::{FlaggedRecordWriter, SkipInfo};
+    use crate::discogs::rules::{FlaggedRecordWriter, SkipInfo};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -1803,7 +1805,7 @@ fn test_flagged_writer_write_skip_deduplication() {
 
 #[test]
 fn test_flagged_writer_write_skip_without_raw_xml() {
-    use crate::rules::{FlaggedRecordWriter, SkipInfo};
+    use crate::discogs::rules::{FlaggedRecordWriter, SkipInfo};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();

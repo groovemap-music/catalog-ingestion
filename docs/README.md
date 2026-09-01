@@ -36,7 +36,7 @@ work without retaining raw task plans or repository-spanning proposals here.
 | Discogs and MusicBrainz producer integration | [Extraction architecture](extraction.md) |
 | Automatic MusicBrainz downloads | [Extraction architecture](extraction.md#musicbrainz) |
 | MusicBrainz release-group support | [Extraction architecture](extraction.md#published-entities) |
-| Extractor mutual exclusion | [Discogs-first coordination](decisions/0002-discogs-first-musicbrainz-coordination.md) |
+| Combined-runtime coordination and concurrent-container cutover | [Discogs-first coordination](decisions/0002-discogs-first-musicbrainz-coordination.md) |
 | Producer-side normalization | [Producer normalization](decisions/0001-producer-normalization-boundary.md) |
 
 Historical implementation plans are not part of this repository's published

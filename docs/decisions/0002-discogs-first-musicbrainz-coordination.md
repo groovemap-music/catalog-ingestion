@@ -1,7 +1,7 @@
 # ADR 0002: Coordinate MusicBrainz behind Discogs
 
 - Status: accepted
-- Scope: source-loop scheduling
+- Scope: current combined-runtime source-loop scheduling
 
 ## Context
 
@@ -46,3 +46,8 @@ Discogs-before-MusicBrainz publication nor provides distributed mutual exclusion
 - Redis locks and broker signaling would add infrastructure and failure modes for a
   two-process scheduling preference. Shared-volume lock files couple deployment storage
   and are not used.
+- The implementation belongs to a removable MusicBrainz combined-runtime compatibility
+  module, not to shared runtime policy.
+- Provider-owned Discogs and MusicBrainz containers do not carry this preference forward:
+  after identity cutover they may ingest concurrently without cross-container health
+  polling, ordering, or mutual exclusion.

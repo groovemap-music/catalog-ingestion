@@ -15,7 +15,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
-use crate::extractor::{ExtractionStatus, ExtractorState};
+use crate::runtime::{ExtractionStatus, ExtractorState};
 
 /// Shared state type for all health server handlers
 type AppState = (Arc<RwLock<ExtractorState>>, Arc<Mutex<Option<bool>>>);

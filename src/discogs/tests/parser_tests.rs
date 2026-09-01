@@ -1,3 +1,5 @@
+//! Discogs XML parser module tests.
+
 use super::*;
 use flate2::Compression;
 use flate2::write::GzEncoder;

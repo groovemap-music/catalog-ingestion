@@ -1,6 +1,8 @@
+//! Discogs normalization module tests.
+
 use serde_json::json;
 
-use crate::normalize::{ensure_list, normalize_record, strip_at_prefixes, unwrap_container};
+use crate::discogs::normalize::{ensure_list, normalize_record, strip_at_prefixes, unwrap_container};
 
 // ── strip_at_prefixes ───────────────────────────────────────────────
 
@@ -458,7 +460,7 @@ fn test_unwrap_container_bare_string() {
 fn test_normalize_item_list_with_string_items() {
     // Line 94: string items become {"id": value}
     let input = json!({"name": ["123", "456"]});
-    let result = crate::normalize::normalize_item_list(&input, "name");
+    let result = crate::discogs::normalize::normalize_item_list(&input, "name");
     assert_eq!(result, json!([{"id": "123"}, {"id": "456"}]));
 }
 
@@ -466,7 +468,7 @@ fn test_normalize_item_list_with_string_items() {
 fn test_normalize_item_list_with_number_items() {
     // Line 96: non-object/non-string items pass through
     let input = json!({"name": [42, true]});
-    let result = crate::normalize::normalize_item_list(&input, "name");
+    let result = crate::discogs::normalize::normalize_item_list(&input, "name");
     assert_eq!(result, json!([42, true]));
 }
 

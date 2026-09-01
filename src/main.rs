@@ -9,24 +9,21 @@ use tracing::{error, info};
 use rules::RulesConfig;
 
 mod config;
+mod discogs;
 #[allow(dead_code)]
 mod generated {
     pub mod catalog_contract;
 }
-mod discogs_downloader;
-mod extractor;
 mod health;
-mod jsonl_parser;
 mod message_queue;
-mod musicbrainz_downloader;
-mod normalize;
-mod parser;
+mod musicbrainz;
 mod polite_http;
-mod rules;
+mod runtime;
 mod state_marker;
 mod types;
 
 use config::ExtractorConfig;
+use discogs::rules;
 use health::HealthServer;
 use types::Source;
 
@@ -118,7 +115,7 @@ async fn main() -> Result<()> {
     let config = Arc::new(config);
 
     // Initialize shared state
-    let state = Arc::new(RwLock::new(extractor::ExtractorState::default()));
+    let state = Arc::new(RwLock::new(runtime::ExtractorState::default()));
     let trigger = Arc::new(Mutex::new(None::<bool>));
 
     // Start health server
@@ -133,12 +130,12 @@ async fn main() -> Result<()> {
     let shutdown = setup_shutdown_handler();
 
     // Create factory for message queue connections
-    let mq_factory: Arc<dyn extractor::MessageQueueFactory> = Arc::new(extractor::DefaultMessageQueueFactory);
+    let mq_factory: Arc<dyn runtime::MessageQueueFactory> = Arc::new(runtime::DefaultMessageQueueFactory);
 
     // Run the main extraction loop, branching on source
     let extraction_result = match config.source {
         Source::Discogs => {
-            extractor::run_extraction_loop(
+            discogs::run_extraction_loop(
                 config.clone(),
                 state.clone(),
                 shutdown.clone(),
@@ -150,16 +147,8 @@ async fn main() -> Result<()> {
             .await
         }
         Source::MusicBrainz => {
-            extractor::run_musicbrainz_loop(
-                config.clone(),
-                state.clone(),
-                shutdown.clone(),
-                args.force_reprocess,
-                mq_factory,
-                trigger.clone(),
-                compiled_rules,
-            )
-            .await
+            musicbrainz::run_musicbrainz_loop(config.clone(), state.clone(), shutdown.clone(), args.force_reprocess, mq_factory, trigger.clone())
+                .await
         }
     };
 
