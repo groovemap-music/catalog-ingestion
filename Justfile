@@ -82,7 +82,7 @@ bump-preview:
 
 # Update Cargo metadata and changelog only; do not commit, tag, push, or publish.
 bump:
-    uvx --from commitizen==4.9.1 cz bump --version-files-only --changelog --yes --check-consistency
+    uvx --from commitizen==4.9.1 cz bump --files-only --changelog --yes --check-consistency
 
 release-dry-run: check
     bash scripts/release-dry-run.sh
