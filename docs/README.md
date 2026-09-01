@@ -12,6 +12,8 @@
   frequency, monitoring, and recovery guarantees.
 - [Runtime identity and compatibility](runtime-identity.md) — canonical GrooveMap names
   and the internal or wire identifiers retained for compatibility.
+- [Provider-split compatibility baseline](provider-split-baseline.md) — pinned contract,
+  fixture, lifecycle, state, coordination, and shutdown behavior for repository separation.
 - [Publication readiness](publication-readiness.md) — history-sanitation scope,
   preserved public documentation, and separate operator approval gates.
 - [Catalog event contract](../contracts/catalog-events/README.md) — versioning,
