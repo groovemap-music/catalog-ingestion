@@ -1,29 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
+use extractor::discogs::rules;
+use extractor::discogs::rules::RulesConfig;
+use extractor::{config::ExtractorConfig, discogs, health::HealthServer, runtime};
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
-use rules::RulesConfig;
-
-mod config;
-mod discogs;
-#[allow(dead_code)]
-mod generated {
-    pub mod catalog_contract;
-}
-mod health;
-mod message_queue;
-mod polite_http;
-mod runtime;
-mod state_marker;
-mod types;
-
-use config::ExtractorConfig;
-use discogs::rules;
-use health::HealthServer;
 /// GrooveMap catalog ingestion for Discogs.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

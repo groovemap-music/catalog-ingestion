@@ -64,7 +64,6 @@ def check_conceptual_diagrams() -> None:
         ROOT / "docs" / "state-marker-system.md",
         ROOT / "docs" / "state-marker-periodic-updates.md",
         ROOT / "docs" / "decisions" / "0001-producer-normalization-boundary.md",
-        ROOT / "docs" / "decisions" / "0002-discogs-first-musicbrainz-coordination.md",
     )
     non_mermaid_diagram_fences = {"blockdiag", "d2", "dot", "graphviz", "nomnoml", "plantuml", "puml", "seqdiag"}
 
