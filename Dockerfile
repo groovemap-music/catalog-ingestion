@@ -18,6 +18,7 @@ COPY benches ./benches
 # Create dummy main to cache dependencies
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
+    touch src/lib.rs && \
     cargo build --release --locked && \
     rm -rf src
 
