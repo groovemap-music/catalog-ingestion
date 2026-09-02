@@ -12,7 +12,7 @@ rules engine also cannot be allowed to decide whether normalization occurs.
 
 ## Decision
 
-Normalize Discogs records once in `catalog-ingestion`, after optional skip/filter/rule
+Normalize Discogs records once in `discogs-ingestion`, after optional skip/filter/rule
 evaluation and before batching. Compute `sha256` from the normalized payload. The
 normalizer is an unconditional pipeline stage, including when `DATA_QUALITY_RULES` is
 unset.

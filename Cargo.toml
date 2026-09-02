@@ -1,17 +1,21 @@
 [package]
-name = "extractor"
+name = "discogs-ingestion"
 version = "0.1.1"
 edition = "2024"
 authors = ["Robert Wlodarczyk <robert@simplicityguy.com>"]
-description = "Discogs and MusicBrainz catalog ingestion and event-contract producer"
-repository = "https://github.com/groovemap-music/catalog-ingestion"
+description = "Discogs catalog ingestion and event-contract producer"
+repository = "https://github.com/groovemap-music/discogs-ingestion"
 homepage = "https://groovemap.music"
 license = "MIT"
 publish = false
 
 [[bin]]
-name = "extractor"
+name = "discogs-ingestion"
 path = "src/main.rs"
+
+[lib]
+name = "extractor"
+path = "src/lib.rs"
 
 [features]
 test-support = ["mockall"]
@@ -89,7 +93,7 @@ async-trait = "0.1"
 mockall = { version = "0.15", optional = true }
 
 [dev-dependencies]
-extractor = { path = ".", features = ["test-support"] }
+extractor = { package = "discogs-ingestion", path = ".", features = ["test-support"] }
 tempfile = "3.27"
 tokio = { version = "1.53", features = ["test-util"] }
 mockito = "1.7"

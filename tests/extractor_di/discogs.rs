@@ -8,7 +8,7 @@ use extractor::message_queue::MockMessagePublisher;
 use extractor::rules::{CompiledRulesConfig, RulesConfig};
 use extractor::state_marker::{PhaseStatus, ProcessingDecision, StateMarker};
 use extractor::types::S3FileInfo;
-use extractor::types::{DataMessage, DataType, Source};
+use extractor::types::{DataMessage, DataType};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::io::Write;
@@ -32,12 +32,7 @@ fn test_config(root: &std::path::Path) -> ExtractorConfig {
         progress_log_interval: 1000,
         state_save_interval: 1000,
         data_quality_rules: None,
-        source: Source::Discogs,
-        musicbrainz_root: std::path::PathBuf::from("/musicbrainz-data"),
         discogs_exchange_prefix: "groovemap-discogs".to_string(),
-        musicbrainz_exchange_prefix: "groovemap-musicbrainz".to_string(),
-        musicbrainz_dump_url: "https://data.metabrainz.org/pub/musicbrainz/data/json-dumps/".to_string(),
-        discogs_health_url: "http://extractor-discogs:8000/health".to_string(),
     }
 }
 

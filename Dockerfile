@@ -38,12 +38,12 @@ ARG VCS_REF
 ARG UID=1000
 ARG GID=1000
 
-LABEL org.opencontainers.image.title="catalog-ingestion" \
-      org.opencontainers.image.description="GrooveMap Discogs and MusicBrainz catalog ingestion and event publishing" \
+LABEL org.opencontainers.image.title="discogs-ingestion" \
+      org.opencontainers.image.description="GrooveMap Discogs catalog ingestion and event publishing" \
       org.opencontainers.image.authors="Robert Wlodarczyk <robert@simplicityguy.com>" \
       org.opencontainers.image.url="https://groovemap.music" \
-      org.opencontainers.image.documentation="https://github.com/groovemap-music/catalog-ingestion/blob/main/README.md" \
-      org.opencontainers.image.source="https://github.com/groovemap-music/catalog-ingestion" \
+      org.opencontainers.image.documentation="https://github.com/groovemap-music/discogs-ingestion/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/groovemap-music/discogs-ingestion" \
       org.opencontainers.image.vendor="GrooveMap" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${BUILD_VERSION}" \
@@ -64,11 +64,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd -r -g ${GID} extractor && useradd -r -l -u ${UID} -g extractor extractor
 
 # Create necessary directories
-RUN mkdir -p /discogs-data /musicbrainz-data /logs && \
-    chown -R extractor:extractor /discogs-data /musicbrainz-data /logs
+RUN mkdir -p /discogs-data /logs && \
+    chown -R extractor:extractor /discogs-data /logs
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/extractor /usr/local/bin/extractor
+COPY --from=builder /app/target/release/discogs-ingestion /usr/local/bin/discogs-ingestion
 
 # Switch to non-root user
 # UID/GID build arguments resolve to numeric IDs; DL3066 cannot infer their values.
@@ -86,4 +86,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
 EXPOSE 8000
 
 # Run the application
-ENTRYPOINT ["extractor"]
+ENTRYPOINT ["discogs-ingestion"]

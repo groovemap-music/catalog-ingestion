@@ -1,8 +1,8 @@
 #[test]
 fn runtime_image_uses_repository_identity_and_safe_boundaries() {
     let dockerfile = include_str!("../Dockerfile");
-    assert!(dockerfile.contains("org.opencontainers.image.title=\"catalog-ingestion\""));
-    assert!(dockerfile.contains("github.com/groovemap-music/catalog-ingestion"));
+    assert!(dockerfile.contains("org.opencontainers.image.title=\"discogs-ingestion\""));
+    assert!(dockerfile.contains("github.com/groovemap-music/discogs-ingestion"));
     assert!(dockerfile.contains("org.opencontainers.image.licenses=\"MIT\""));
     assert_eq!(dockerfile.matches("cargo build --release --locked").count(), 2);
     assert!(dockerfile.contains("USER ${UID}:${GID}"));

@@ -196,48 +196,6 @@ fn test_from_env_secret_file_not_found() {
 }
 
 #[test]
-#[serial]
-fn test_musicbrainz_dump_url_default() {
-    unsafe {
-        std::env::remove_var("MUSICBRAINZ_DUMP_URL");
-    }
-    let config = ExtractorConfig::default();
-    assert_eq!(config.musicbrainz_dump_url, "https://data.metabrainz.org/pub/musicbrainz/data/json-dumps/");
-}
-
-#[test]
-#[serial]
-fn test_musicbrainz_dump_url_from_env() {
-    unsafe {
-        std::env::set_var("MUSICBRAINZ_DUMP_URL", "http://localhost:9999/dumps/");
-    }
-    let config = ExtractorConfig::from_env().unwrap();
-    assert_eq!(config.musicbrainz_dump_url, "http://localhost:9999/dumps/");
-    unsafe {
-        std::env::remove_var("MUSICBRAINZ_DUMP_URL");
-    }
-}
-
-#[test]
-fn test_discogs_health_url_default() {
-    let config = ExtractorConfig::default();
-    assert_eq!(config.discogs_health_url, "http://extractor-discogs:8000/health");
-}
-
-#[test]
-#[serial]
-fn test_discogs_health_url_from_env() {
-    unsafe {
-        std::env::set_var("DISCOGS_HEALTH_URL", "http://custom-host:9000/health");
-    }
-    let config = ExtractorConfig::from_env().unwrap();
-    assert_eq!(config.discogs_health_url, "http://custom-host:9000/health");
-    unsafe {
-        std::env::remove_var("DISCOGS_HEALTH_URL");
-    }
-}
-
-#[test]
 fn test_build_amqp_url_special_characters() {
     let url = build_amqp_url("user@host", "p@ss:w/rd#1", "localhost", "5672");
     assert_eq!(url, "amqp://user%40host:p%40ss%3Aw%2Frd%231@localhost:5672/%2F");

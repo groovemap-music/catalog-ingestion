@@ -80,7 +80,7 @@ def check_conceptual_diagrams() -> None:
 
 cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["package"]
 require(cargo["license"] == "MIT", "Cargo package must use the approved MIT license")
-require(cargo["repository"] == "https://github.com/groovemap-music/catalog-ingestion", "stale repository URL")
+require(cargo["repository"] == "https://github.com/groovemap-music/discogs-ingestion", "stale repository URL")
 require(cargo["publish"] is False, "crate publication must remain disabled")
 
 dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -90,15 +90,15 @@ require(re.search(r"^ARG UID=1000$", dockerfile, re.MULTILINE) is not None, "Doc
 require(re.search(r"^ARG GID=1000$", dockerfile, re.MULTILINE) is not None, "Dockerfile must pin the default GID")
 require("useradd -r -l -u ${UID}" in dockerfile, "runtime user must use the configured UID")
 require(re.search(r"^USER \$\{UID\}:\$\{GID\}$", dockerfile, re.MULTILINE) is not None, "runtime USER must match the owned directories")
-require('org.opencontainers.image.title="catalog-ingestion"' in dockerfile, "container image title must match the repository")
+require('org.opencontainers.image.title="discogs-ingestion"' in dockerfile, "container image title must match the repository")
 require("RUST_EXTRACTOR_CONFIG" not in dockerfile, "unused legacy extractor configuration variable must stay removed")
 
 release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-require("repository-name: catalog-ingestion" in release_workflow, "release workflow must use the repository identity")
+require("repository-name: discogs-ingestion" in release_workflow, "release workflow must use the repository identity")
 require("publish-image: true" in release_workflow, "release workflow must publish the repository-named image")
 
 polite_http = (ROOT / "src" / "polite_http.rs").read_text(encoding="utf-8")
-require("groovemap-catalog-ingestion/" in polite_http, "default User-Agent must identify GrooveMap catalog ingestion")
+require("groovemap-discogs-ingestion/" in polite_http, "default User-Agent must identify GrooveMap catalog ingestion")
 
 for runtime_identity_source in (ROOT / "src" / "main.rs", ROOT / "src" / "health.rs"):
     text = runtime_identity_source.read_text(encoding="utf-8").lower()

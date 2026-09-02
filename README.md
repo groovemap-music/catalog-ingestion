@@ -1,9 +1,9 @@
 # GrooveMap catalog ingestion
 
-`catalog-ingestion` downloads, verifies, parses, and normalizes Discogs and MusicBrainz
+`discogs-ingestion` downloads, verifies, parses, and normalizes Discogs and MusicBrainz
 catalog dumps, then publishes versioned events to RabbitMQ. This repository owns the
 producer behavior, event schemas, generated Rust and Python bindings, extraction policy,
-source-state markers, and the `catalog-ingestion` container image.
+source-state markers, and the `discogs-ingestion` container image.
 
 ## Data flow
 
@@ -42,7 +42,7 @@ The stable repository interface includes:
 - `just test` — run the Rust test suite.
 - `just contract` — regenerate the event contract and language bindings.
 - `just contract-check` — prove generated artifacts match committed sources.
-- `just image` — build the `catalog-ingestion:local` container image.
+- `just image` — build the `discogs-ingestion:local` container image.
 - `just release-dry-run` — produce release evidence without tagging or publishing.
 
 Run `cargo run --locked -- --help` for source selection and runtime options. Runtime
@@ -51,7 +51,7 @@ source-controlled extraction-rules file belong to the `deployment` repository. T
 rules file is not baked into the container image or release bundle.
 
 The product, repository, health-service, and container-image identity is
-`catalog-ingestion`. A small set of executable, Compose-network, environment, and
+`discogs-ingestion`. A small set of executable, Compose-network, environment, and
 RabbitMQ names remains stable for compatibility; these are cataloged in [Runtime identity
 and compatibility](docs/runtime-identity.md).
 

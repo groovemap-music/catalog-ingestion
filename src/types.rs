@@ -27,6 +27,7 @@ impl DataType {
     }
 
     /// Get data types for MusicBrainz extraction (no Masters)
+    #[allow(dead_code)]
     pub fn musicbrainz() -> Vec<DataType> {
         vec![DataType::Artists, DataType::Labels, DataType::ReleaseGroups, DataType::Releases]
     }
@@ -60,34 +61,6 @@ impl FromStr for DataType {
             "release-groups" => Ok(DataType::ReleaseGroups),
             "releases" => Ok(DataType::Releases),
             _ => Err(format!("Unknown data type: {}", s)),
-        }
-    }
-}
-
-/// Data source for extraction
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Source {
-    Discogs,
-    MusicBrainz,
-}
-
-impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Source::Discogs => write!(f, "discogs"),
-            Source::MusicBrainz => write!(f, "musicbrainz"),
-        }
-    }
-}
-
-impl FromStr for Source {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "discogs" => Ok(Source::Discogs),
-            "musicbrainz" => Ok(Source::MusicBrainz),
-            _ => Err(format!("Unknown source: {}", s)),
         }
     }
 }

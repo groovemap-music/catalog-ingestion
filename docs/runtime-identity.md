@@ -1,16 +1,16 @@
 # Runtime identity and compatibility
 
 The canonical service, repository, health-response, and container-image name is
-`catalog-ingestion`. Runtime logs and the startup banner identify the service as
+`discogs-ingestion`. Runtime logs and the startup banner identify the service as
 GrooveMap catalog ingestion, while source-specific messages distinguish Discogs from
 MusicBrainz work.
 
 ```mermaid
 flowchart LR
-    I[ghcr.io/groovemap-music/catalog-ingestion] --> D[extractor-discogs Compose service]
+    I[ghcr.io/groovemap-music/discogs-ingestion] --> D[extractor-discogs Compose service]
     I --> M[extractor-musicbrainz Compose service]
-    D --> H1[catalog-ingestion health identity]
-    M --> H2[catalog-ingestion health identity]
+    D --> H1[discogs-ingestion health identity]
+    M --> H2[discogs-ingestion health identity]
     D --> Q1[groovemap-discogs exchanges]
     M --> Q2[groovemap-musicbrainz exchanges]
 ```

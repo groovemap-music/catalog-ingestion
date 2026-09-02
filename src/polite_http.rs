@@ -1,6 +1,6 @@
-//! Polite HTTP client for upstream data providers (Discogs, MusicBrainz).
+//! Polite HTTP client for the Discogs dump service.
 //!
-//! Discogs and MusicBrainz both publish rate-limit guidance: identify yourself
+//! Discogs publishes rate-limit guidance: identify yourself
 //! with a `User-Agent`, throttle to a sustainable request rate, and respect
 //! `Retry-After` on 429 / 503. A naive `reqwest::get` loop violates all three
 //! and — worse — when paired with a docker `restart: on-failure` policy, every
@@ -27,7 +27,7 @@ use tracing::{info, warn};
 
 /// Default User-Agent advertised to upstream servers.
 pub const DEFAULT_USER_AGENT: &str =
-    concat!("groovemap-catalog-ingestion/", env!("CARGO_PKG_VERSION"), " (+https://github.com/groovemap-music/catalog-ingestion)");
+    concat!("groovemap-discogs-ingestion/", env!("CARGO_PKG_VERSION"), " (+https://github.com/groovemap-music/discogs-ingestion)");
 
 #[derive(Debug, Clone)]
 pub struct PoliteConfig {
@@ -196,7 +196,7 @@ mod tests {
     fn default_user_agent_uses_public_repository_identity() {
         assert_eq!(
             DEFAULT_USER_AGENT,
-            concat!("groovemap-catalog-ingestion/", env!("CARGO_PKG_VERSION"), " (+https://github.com/groovemap-music/catalog-ingestion)")
+            concat!("groovemap-discogs-ingestion/", env!("CARGO_PKG_VERSION"), " (+https://github.com/groovemap-music/discogs-ingestion)")
         );
     }
 

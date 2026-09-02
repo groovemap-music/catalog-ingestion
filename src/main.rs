@@ -16,7 +16,6 @@ mod generated {
 }
 mod health;
 mod message_queue;
-mod musicbrainz;
 mod polite_http;
 mod runtime;
 mod state_marker;
@@ -25,9 +24,7 @@ mod types;
 use config::ExtractorConfig;
 use discogs::rules;
 use health::HealthServer;
-use types::Source;
-
-/// GrooveMap catalog ingestion for Discogs and MusicBrainz.
+/// GrooveMap catalog ingestion for Discogs.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -38,10 +35,6 @@ struct Args {
     /// Path to data quality rules YAML file
     #[clap(long, env = "DATA_QUALITY_RULES")]
     data_quality_rules: Option<std::path::PathBuf>,
-
-    /// Data source to extract from (discogs or musicbrainz)
-    #[arg(long, env = "EXTRACTOR_SOURCE")]
-    source: Option<Source>,
 }
 
 #[tokio::main]
@@ -62,7 +55,7 @@ async fn main() -> Result<()> {
         .init();
 
     // Display ASCII art
-    print_ascii_art(args.source.as_ref());
+    print_ascii_art();
 
     // Load configuration from environment (drop-in replacement for extractor)
     let mut config = match ExtractorConfig::from_env() {
@@ -78,15 +71,7 @@ async fn main() -> Result<()> {
         config.data_quality_rules = args.data_quality_rules;
     }
 
-    // CLI arg takes precedence over env var for source (only if explicitly provided)
-    if let Some(s) = args.source {
-        config.source = s;
-    }
-
-    // Logged AFTER config.source is fully resolved (env var + CLI override) so the
-    // startup banner reflects the actual --source mode instead of always claiming
-    // "Discogs" — cosmetic, but misleading in the extractor-musicbrainz container's logs.
-    info!("{}", startup_banner_message(config.source));
+    info!("{}", startup_banner_message());
 
     // Load and compile data quality rules if configured
     let compiled_rules = if let Some(ref rules_path) = config.data_quality_rules {
@@ -132,37 +117,28 @@ async fn main() -> Result<()> {
     // Create factory for message queue connections
     let mq_factory: Arc<dyn runtime::MessageQueueFactory> = Arc::new(runtime::DefaultMessageQueueFactory);
 
-    // Run the main extraction loop, branching on source
-    let extraction_result = match config.source {
-        Source::Discogs => {
-            discogs::run_extraction_loop(
-                config.clone(),
-                state.clone(),
-                shutdown.clone(),
-                args.force_reprocess,
-                mq_factory,
-                trigger.clone(),
-                compiled_rules,
-            )
-            .await
-        }
-        Source::MusicBrainz => {
-            musicbrainz::run_musicbrainz_loop(config.clone(), state.clone(), shutdown.clone(), args.force_reprocess, mq_factory, trigger.clone())
-                .await
-        }
-    };
+    let extraction_result = discogs::run_extraction_loop(
+        config.clone(),
+        state.clone(),
+        shutdown.clone(),
+        args.force_reprocess,
+        mq_factory,
+        trigger.clone(),
+        compiled_rules,
+    )
+    .await;
 
     // Cleanup
-    info!("🛑 Shutting down catalog-ingestion...");
+    info!("🛑 Shutting down discogs-ingestion...");
     health_handle.abort();
 
     match extraction_result {
         Ok(_) => {
-            info!("✅ catalog-ingestion service shutdown complete");
+            info!("✅ discogs-ingestion service shutdown complete");
             Ok(())
         }
         Err(e) => {
-            error!("❌ catalog-ingestion failed: {}", e);
+            error!("❌ discogs-ingestion failed: {}", e);
             // Sleep before exiting so docker-compose's `restart: on-failure`
             // policy can't flap us through a rate-limit window. The polite
             // client already absorbs single Retry-After cooldowns up to 2h;
@@ -197,14 +173,11 @@ async fn apply_failure_cooldown(env_value: Option<&str>) {
 
 /// Startup banner text reflecting the actual resolved `--source` mode, instead of a
 /// hardcoded "Discogs" claim regardless of which extractor container is running.
-fn startup_banner_message(source: Source) -> &'static str {
-    match source {
-        Source::Discogs => "🚀 Starting GrooveMap catalog-ingestion for Discogs",
-        Source::MusicBrainz => "🚀 Starting GrooveMap catalog-ingestion for MusicBrainz",
-    }
+fn startup_banner_message() -> &'static str {
+    "🚀 Starting GrooveMap discogs-ingestion"
 }
 
-fn print_ascii_art(_source: Option<&Source>) {
+fn print_ascii_art() {
     println!("{}", ascii_art());
 }
 
@@ -215,7 +188,7 @@ fn ascii_art() -> &'static str {
 / _/ _` |  _/ _` | / _ \/ _` |___| | ' \/ _` / -_|_-<  _| / _ \ ' \
 \__\__,_|\__\__,_|_\___/\__, |   |_|_||_\__, \___/__/\__|_\___/_||_|
                         |___/           |___/
-                          catalog-ingestion
+                          discogs-ingestion
 "#
 }
 

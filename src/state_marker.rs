@@ -294,6 +294,7 @@ impl StateMarker {
     ///
     /// MusicBrainz markers are stored inside `musicbrainz_root/<version>/`
     /// (the versioned subdirectory), not at the root level.
+    #[allow(dead_code)]
     pub fn musicbrainz_file_path(musicbrainz_root: &Path, version: &str) -> PathBuf {
         musicbrainz_root.join(version).join(format!(".mb_extraction_status_{}.json", version))
     }
