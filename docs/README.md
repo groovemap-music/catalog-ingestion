@@ -14,6 +14,8 @@
   and the internal or wire identifiers retained for compatibility.
 - [Provider-split compatibility baseline](provider-split-baseline.md) — pinned contract,
   fixture, lifecycle, state, coordination, and shutdown behavior for repository separation.
+- [Provider-split repository cutover handoff](provider-split-cutover.md) — immutable source
+  and artifact digests, source ownership, identity changes, concurrency, and rollback gates.
 - [Publication readiness](publication-readiness.md) — history-sanitation scope,
   preserved public documentation, and separate operator approval gates.
 - [Catalog event contract](../contracts/catalog-events/README.md) — versioning,

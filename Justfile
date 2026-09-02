@@ -29,6 +29,16 @@ lint:
 test:
     cargo test --all-features --locked
 
+source-characterization:
+    cargo test --all-features --locked --test provider_split_baseline_test
+    cargo test --all-features --locked --test provider_module_boundary_test
+    cargo test --all-features --locked --test extractor_di_test discogs
+    cargo test --all-features --locked --test extractor_di_test musicbrainz
+    cargo test --all-features --locked discogs::parser::tests::
+    cargo test --all-features --locked discogs::normalize::tests::
+    cargo test --all-features --locked discogs::rules::tests::
+    cargo test --all-features --locked musicbrainz::jsonl_parser::tests::
+
 coverage: bootstrap
     cargo clean
     if [[ "$(uname -s)" == Linux ]]; then export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-C link-arg=-fuse-ld=bfd"; fi; mise exec {{cargo_llvm_cov_tool}} -- cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
@@ -41,6 +51,7 @@ contract-check:
 
 repository-check:
     mise exec -- python scripts/check-repository.py
+    mise exec -- python scripts/check-provider-split-cutover.py
 
 publication-history-test:
     PYTHONDONTWRITEBYTECODE=1 mise exec -- python -m unittest discover -s tests -p 'test_publication_history.py'
