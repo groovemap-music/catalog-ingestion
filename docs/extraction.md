@@ -8,6 +8,12 @@ Consumers are deliberately outside this repository; they depend on the versioned
 Select a mode with `--source discogs|musicbrainz` or `EXTRACTOR_SOURCE`. The default is
 Discogs.
 
+The binary composition root now enters explicit `discogs` or `musicbrainz` modules.
+Those modules own provider acquisition, parsing, transformation, and orchestration.
+Only batching, AMQP publication, health/trigger state, marker persistence, polite HTTP,
+and shutdown mechanics remain provider-neutral runtime services. The legacy
+`extractor` module is an exports-only compatibility surface.
+
 ```mermaid
 flowchart LR
     subgraph Discogs
@@ -79,7 +85,7 @@ Override the prefixes with `DISCOGS_EXCHANGE_PREFIX` and
 `MUSICBRAINZ_EXCHANGE_PREFIX`. The contract is authoritative for names and envelope
 fields.
 
-## Source coordination
+## Combined-runtime compatibility coordination
 
 Before each initial, periodic, or manually triggered run, MusicBrainz waits while a
 reachable, parseable Discogs health endpoint reports `running`. An unparseable response
@@ -88,6 +94,11 @@ backoff. This prioritizes Discogs and normally reduces simultaneous peak load, b
 not a publication-order guarantee or a distributed mutual-exclusion lock. The behavior
 and failure trade-offs are recorded in the [Discogs-first coordination
 decision](decisions/0002-discogs-first-musicbrainz-coordination.md).
+
+That wait belongs only to the current combined-runtime compatibility layer on the
+MusicBrainz path. It is not shared provider policy. Once Discogs and MusicBrainz run as
+separate provider-owned containers, the compatibility layer is removed and both
+containers may ingest concurrently without consulting each other's health endpoint.
 
 ## Health and triggers
 

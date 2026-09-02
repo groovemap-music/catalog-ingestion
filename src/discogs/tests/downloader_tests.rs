@@ -1,3 +1,5 @@
+//! Discogs downloader module tests.
+
 use super::*;
 use std::collections::HashMap;
 use tempfile::TempDir;

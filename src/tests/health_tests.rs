@@ -1,5 +1,5 @@
 use super::*;
-use crate::extractor::{ExtractionStatus, ExtractorState};
+use crate::runtime::{ExtractionStatus, ExtractorState};
 use crate::types::DataType;
 use tokio::sync::Mutex;
 

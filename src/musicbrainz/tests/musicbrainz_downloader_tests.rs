@@ -1,3 +1,5 @@
+//! MusicBrainz downloader module tests.
+
 use super::*;
 use std::io::{Read, Write};
 use tempfile::TempDir;

@@ -29,24 +29,35 @@ lint:
 test:
     cargo test --all-features --locked
 
+source-characterization:
+    cargo test --all-features --locked --test provider_split_baseline_test
+    cargo test --all-features --locked --test provider_module_boundary_test
+    cargo test --all-features --locked --test extractor_di_test discogs
+    cargo test --all-features --locked --test extractor_di_test musicbrainz
+    cargo test --all-features --locked discogs::parser::tests::
+    cargo test --all-features --locked discogs::normalize::tests::
+    cargo test --all-features --locked discogs::rules::tests::
+    cargo test --all-features --locked musicbrainz::jsonl_parser::tests::
+
 coverage: bootstrap
     cargo clean
     if [[ "$(uname -s)" == Linux ]]; then export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-C link-arg=-fuse-ld=bfd"; fi; mise exec {{cargo_llvm_cov_tool}} -- cargo llvm-cov --all-features --locked --lcov --output-path lcov.info
 
 contract:
-    python contracts/generate.py
+    mise exec -- python contracts/generate.py
 
 contract-check:
-    python contracts/generate.py --check
+    mise exec -- python contracts/generate.py --check
 
 repository-check:
-    python scripts/check-repository.py
+    mise exec -- python scripts/check-repository.py
+    mise exec -- python scripts/check-provider-split-cutover.py
 
 publication-history-test:
-    PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p 'test_publication_history.py'
+    PYTHONDONTWRITEBYTECODE=1 mise exec -- python -m unittest discover -s tests -p 'test_publication_history.py'
 
 repository-tests:
-    PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p 'test_*.py'
+    PYTHONDONTWRITEBYTECODE=1 mise exec -- python -m unittest discover -s tests -p 'test_*.py'
 
 history-rehearsal source-repository output-directory:
     PLANNING_ARCHIVE_REPO="${PLANNING_ARCHIVE_REPO}" bash scripts/rehearse-publication-history.sh "{{ source-repository }}" "{{ output-directory }}"
@@ -65,8 +76,8 @@ license-check: bootstrap
     mise exec {{cargo_deny_tool}} -- cargo deny --log-level error check licenses bans sources
 
 secret-scan:
-    gitleaks git --redact --no-banner
-    gitleaks dir . --redact --no-banner
+    mise exec -- gitleaks git --redact --no-banner
+    mise exec -- gitleaks dir . --redact --no-banner
 
 audit: bootstrap
     mise exec {{cargo_audit_tool}} -- cargo audit
@@ -78,11 +89,11 @@ image:
     docker build --pull --tag catalog-ingestion:local .
 
 bump-preview:
-    python scripts/check_bump_preview.py
+    mise exec -- python scripts/check_bump_preview.py
 
 # Update Cargo metadata and changelog only; do not commit, tag, push, or publish.
 bump:
-    uvx --from commitizen==4.9.1 cz bump --files-only --changelog --yes --check-consistency
+    mise exec -- uvx --from commitizen==4.9.1 cz bump --files-only --changelog --yes --check-consistency
 
 release-dry-run: check
     bash scripts/release-dry-run.sh

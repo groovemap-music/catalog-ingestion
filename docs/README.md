@@ -12,6 +12,10 @@
   frequency, monitoring, and recovery guarantees.
 - [Runtime identity and compatibility](runtime-identity.md) — canonical GrooveMap names
   and the internal or wire identifiers retained for compatibility.
+- [Provider-split compatibility baseline](provider-split-baseline.md) — pinned contract,
+  fixture, lifecycle, state, coordination, and shutdown behavior for repository separation.
+- [Provider-split repository cutover handoff](provider-split-cutover.md) — immutable source
+  and artifact digests, source ownership, identity changes, concurrency, and rollback gates.
 - [Publication readiness](publication-readiness.md) — history-sanitation scope,
   preserved public documentation, and separate operator approval gates.
 - [Catalog event contract](../contracts/catalog-events/README.md) — versioning,
@@ -34,7 +38,7 @@ work without retaining raw task plans or repository-spanning proposals here.
 | Discogs and MusicBrainz producer integration | [Extraction architecture](extraction.md) |
 | Automatic MusicBrainz downloads | [Extraction architecture](extraction.md#musicbrainz) |
 | MusicBrainz release-group support | [Extraction architecture](extraction.md#published-entities) |
-| Extractor mutual exclusion | [Discogs-first coordination](decisions/0002-discogs-first-musicbrainz-coordination.md) |
+| Combined-runtime coordination and concurrent-container cutover | [Discogs-first coordination](decisions/0002-discogs-first-musicbrainz-coordination.md) |
 | Producer-side normalization | [Producer normalization](decisions/0001-producer-normalization-boundary.md) |
 
 Historical implementation plans are not part of this repository's published
