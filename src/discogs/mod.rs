@@ -26,6 +26,7 @@ use crate::runtime::{
     reset_status_after_failed_check, spawn_shutdown_flag_monitor, wait_for_trigger,
 };
 use crate::state_marker::{PhaseStatus, ProcessingDecision, StateMarker};
+use crate::telemetry;
 use crate::types::{DataMessage, DataType, ExtractionProgress, calculate_content_hash};
 
 use self::downloader::{DataSource, Downloader};
@@ -277,6 +278,7 @@ pub async fn process_discogs_data(
             // resumes them. (cu2.44)
             if shutdown_flag.load(Ordering::SeqCst) {
                 info!("🛑 Shutdown requested — skipping not-yet-started file: {}", file);
+                telemetry::record_file_outcome(telemetry::FileOutcome::Skipped);
                 return Ok(());
             }
             let mq = mq_factory
@@ -594,6 +596,12 @@ pub async fn process_single_file(
         }
         s.active_connections.remove(&data_type);
     }
+
+    telemetry::record_file_outcome(if pipeline_result.is_ok() {
+        telemetry::FileOutcome::Completed
+    } else {
+        telemetry::FileOutcome::Failed
+    });
 
     // Clean up — best-effort, and unconditional. On the success path a cleanup failure is
     // purely cosmetic (the completion signal was already sent and the marker already

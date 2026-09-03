@@ -11,6 +11,7 @@ pub mod message_queue;
 pub mod polite_http;
 pub mod runtime;
 pub mod state_marker;
+pub mod telemetry;
 pub mod types;
 
 // Frozen compatibility paths for downstream Discogs callers.
