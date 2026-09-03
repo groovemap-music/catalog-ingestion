@@ -136,7 +136,14 @@ impl XmlParser {
         // `file_path` comes from operator-controlled config (CLI/config file), not HTTP input.
         let file = File::open(file_path).context(format!("Failed to open file: {:?}", file_path))?; // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path
 
-        let decoder = GzDecoder::new(file);
+        // Publish `groovemap.extraction.file.progress` from the COMPRESSED side of the
+        // stream: the on-disk size is known up front, whereas the uncompressed record count
+        // is not known until the dump has been fully read. A metadata failure yields 0, which
+        // the reader reports as ratio 0.0 rather than dividing by zero.
+        let total_bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
+        let counted = crate::telemetry::progress_reader(file, total_bytes, self.data_type.as_str());
+
+        let decoder = GzDecoder::new(counted);
         // quick-xml 0.42 validates UTF-8 while reading and permanently ends the reader
         // after an encoding error. Normalize the decompressed stream first so malformed
         // source bytes remain visible as U+FFFD without buffering multi-GB dumps in memory.
@@ -185,6 +192,8 @@ impl XmlParser {
 
                     // A repeated error at the same byte offset means the reader made no
                     // forward progress and cannot recover — abort rather than spin forever.
+                    crate::telemetry::record_error(crate::telemetry::Stage::Parse);
+
                     if position == last_error_position {
                         error!("❌ Unrecoverable XML error at position {} (no forward progress): {}", position, e);
                         return Err(e).context(format!("Unrecoverable XML parse error at position {position}"));

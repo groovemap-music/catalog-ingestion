@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use extractor::discogs::rules;
 use extractor::discogs::rules::RulesConfig;
-use extractor::{config::ExtractorConfig, discogs, health::HealthServer, runtime};
+use extractor::{config::ExtractorConfig, discogs, health::HealthServer, runtime, telemetry};
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Mutex;
@@ -39,6 +39,11 @@ async fn main() -> Result<()> {
         .json()
         .init();
 
+    // Telemetry bootstrap. Must precede any instrumented code path: the instruments bind
+    // once to whatever MeterProvider is global when they are first touched. Returns None
+    // (and logs once) when no OTLP endpoint is configured — never fails startup.
+    let meter_provider = telemetry::init_metrics(telemetry::DEFAULT_SERVICE_NAME);
+
     // Display ASCII art
     print_ascii_art();
 
@@ -57,6 +62,10 @@ async fn main() -> Result<()> {
     }
 
     info!("{}", startup_banner_message());
+
+    // Every metric carries `source`; this service extracts exactly one provider, so it is
+    // set once here rather than threaded through every call site.
+    telemetry::set_source(telemetry::SOURCE_DISCOGS);
 
     // Load and compile data quality rules if configured
     let compiled_rules = if let Some(ref rules_path) = config.data_quality_rules {
@@ -116,6 +125,10 @@ async fn main() -> Result<()> {
     // Cleanup
     info!("🛑 Shutting down discogs-ingestion...");
     health_handle.abort();
+
+    // Flush the final metric export before the process goes away, on BOTH exit paths — the
+    // failure path below ends in process::exit, which runs no destructors.
+    telemetry::shutdown_metrics(meter_provider).await;
 
     match extraction_result {
         Ok(_) => {

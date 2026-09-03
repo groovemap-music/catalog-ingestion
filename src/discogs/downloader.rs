@@ -603,6 +603,10 @@ impl Downloader {
             let mut file = File::create(&local_path).await.context("Failed to create local file")?; // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path
             let mut hasher = Sha256::new();
             let mut downloaded: u64 = 0;
+            // Bytes already folded into `groovemap.extraction.download.bytes`. The counter is
+            // advanced in deltas at the existing 10 s log cadence (and once at the end) rather
+            // than once per 8 KiB chunk, which would be millions of adds per dump.
+            let mut bytes_reported: u64 = 0;
             let download_start = std::time::Instant::now();
             let mut last_progress_log = download_start;
 
@@ -631,6 +635,8 @@ impl Downloader {
                                 0.0
                             };
                             info!("📥 {} — {:.1} MB received ({:.1} MB/s)", filename, downloaded as f64 / 1_048_576.0, speed);
+                            crate::telemetry::record_download_bytes(downloaded - bytes_reported);
+                            bytes_reported = downloaded;
                             last_progress_log = now;
                         }
                     }
@@ -660,6 +666,8 @@ impl Downloader {
 
             pb.finish_with_message("Download complete");
 
+            crate::telemetry::record_download_bytes(downloaded - bytes_reported);
+
             info!("✅ Downloaded {} ({:.2} MB)", filename, downloaded as f64 / 1_048_576.0);
 
             // Calculate checksum
@@ -686,6 +694,7 @@ impl Downloader {
             warn!("⚠️ Failed to remove partial file after all retries: {}", e);
         }
 
+        crate::telemetry::record_error(crate::telemetry::Stage::Download);
         Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Download failed after {} attempts", MAX_DOWNLOAD_RETRIES)))
     }
 
