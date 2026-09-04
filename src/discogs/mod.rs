@@ -4,6 +4,7 @@
 //! composition root. Dependencies point inward to the provider-neutral runtime.
 
 pub mod downloader;
+pub mod media;
 pub mod normalize;
 pub mod parser;
 pub mod rules;
@@ -692,6 +693,13 @@ pub async fn message_normalizer(mut receiver: mpsc::Receiver<DataMessage>, sende
         // Normalize the XML-shaped JSON into the flat, consumer-ready format, then compute the
         // content hash from the post-normalization data so consumers detect real changes.
         self::normalize::normalize_record(data_type_str, &mut message.data);
+        // Releases additionally carry the canonical media block (ADR 0007), computed here —
+        // once, at the producer's normalization boundary — from the normalized `formats`
+        // list, which stays untouched as the provenance record. It is attached before the
+        // hash so the hash covers it and consumers detect a vocabulary-driven change.
+        if matches!(data_type, DataType::Releases) {
+            self::media::attach_media_block(&mut message.data);
+        }
         message.sha256 = calculate_content_hash(&message.data);
         if sender.send(message).await.is_err() {
             warn!("⚠️ Normalizer: downstream receiver dropped");
