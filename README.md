@@ -30,6 +30,12 @@ Use `just contract` after changing `contracts/catalog-events/definitions/discogs
 `just image` builds `discogs-ingestion:local`; `just release-dry-run` prepares local
 release evidence without publishing, tagging, or pushing.
 
+`just image` is not part of `just check` — the reusable CI already builds the image on
+every push. Run `just image` yourself whenever you touch a compile-time `include_str!`
+(e.g. the vendored media taxonomy under `contracts/catalog-events/vocab`) or anything
+else the Docker build context depends on, since `just check` alone won't catch a missing
+`COPY`.
+
 ## Telemetry
 
 The extractor pushes OpenTelemetry metrics over **OTLP/HTTP-protobuf** to the collector.
