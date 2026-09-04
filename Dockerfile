@@ -22,6 +22,11 @@ RUN mkdir src && \
     cargo build --release --locked && \
     rm -rf src
 
+# Copy the vendored media taxonomy: src/discogs/media.rs pulls it in at compile
+# time via include_str!, so it must be in the build context before `COPY src`.
+# This is only the vendored vocab subtree, not the whole contracts/ tree.
+COPY contracts/catalog-events/vocab ./contracts/catalog-events/vocab
+
 # Copy actual source code
 COPY src ./src
 
