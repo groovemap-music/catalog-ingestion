@@ -3,12 +3,29 @@
 All notable changes to this repository will be recorded here by Commitizen from
 Conventional Commits.
 
-## Unreleased
+## v0.2.0 (2026-09-04)
 
 ### Feat
 
-- **contracts**: carry the canonical `media` block in the Discogs releases fixture and
-  document it as additive within v1
+- **contracts**: carry the media block in release fixtures and document it
+- **rules**: flag Discogs format names the media taxonomy does not know
+- **media**: add the Rust media mapper and attach the canonical media block
+- **contracts**: fail contract-check on vendored taxonomy drift
+- **contracts**: vendor the media taxonomy
+- **telemetry**: export OTLP metrics from the extraction pipeline
+
+### Fix
+
+- **discogs**: invalidate Docker library cache
+- **discogs**: seed Docker library target
+- **toolchain**: bind pinned tools through mise
+- **split**: freeze provider compatibility baseline
+
+### Refactor
+
+- **discogs**: make repository provider-exclusive
+- **contracts**: generate source-owned v1 exports
+- **runtime**: partition provider-owned modules
 
 ## v0.1.1 (2026-08-31)
 
