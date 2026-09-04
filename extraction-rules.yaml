@@ -106,6 +106,65 @@ rules:
         pattern: "^\\d+$"
       severity: error
 
+    - name: format-not-recognized
+      description: "Format value is not in the vendored Discogs media taxonomy (contracts/catalog-events/vocab/media-taxonomy.json). Refresh this enum by re-running the list of discogs.formats keys after re-vendoring the taxonomy; see docs/extraction-rules-guide.md."
+      field: formats.format.@name
+      condition:
+        type: enum
+        values:
+          - 4-Track Cartridge
+          - 8-Track Cartridge
+          - Acetate
+          - All Media
+          - Betacam
+          - Betacam SP
+          - Betamax
+          - Blu-ray
+          - Blu-ray-R
+          - Box Set
+          - CD
+          - CDV
+          - CDr
+          - CED
+          - Cassette
+          - Cylinder
+          - DAT
+          - DCC
+          - DVD
+          - DVD-Audio
+          - DVDr
+          - DualDisc
+          - Edison Disc
+          - Elcaset
+          - File
+          - Film Reel
+          - Flexi-disc
+          - Floppy Disk
+          - HD DVD
+          - HD DVD-R
+          - Hybrid
+          - Laserdisc
+          - Lathe Cut
+          - Memory Stick
+          - Microcassette
+          - MiniDisc
+          - Minidisc
+          - Pathé Disc
+          - PlayTape
+          - Reel-To-Reel
+          - SACD
+          - SVCD
+          - Shellac
+          - UMD
+          - Ultra HD Blu-ray
+          - VCD
+          - VHD
+          - VHS
+          - Video 2000
+          - Video8
+          - Vinyl
+      severity: warning
+
     # Note: years like 197 and 338 are already caught by year-out-of-range (< min 1860).
 
   artists:

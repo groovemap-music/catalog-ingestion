@@ -161,10 +161,48 @@ continues to normalization and publication.
 | `length` | Flags strings outside optional character-count bounds. |
 
 Fields support dot notation and array expansion. If a path encounters an array, each
-element is evaluated independently.
+element is evaluated independently. Because rules see the parsed, pre-normalization
+XML shape, an XML attribute like `<format name="Vinyl">` addresses as `@name` — for
+example `formats.format.@name` reaches the format name whether Discogs emitted a
+single `format` element (an object) or several (an array); both shapes resolve to the
+same list of values.
 
 Severities are `error`, `warning`, and `info`. Errors and warnings capture reconstructed
 XML and parsed JSON; informational violations are written only to the JSONL log.
+
+### `format-not-recognized`
+
+The source-controlled policy includes a warning-level `enum` rule, `format-not-recognized`,
+addressing `formats.format.@name` on releases. Its allowed values are exactly the
+Discogs format names known to the vendored media taxonomy at
+[`contracts/catalog-events/vocab/media-taxonomy.json`](../contracts/catalog-events/vocab/media-taxonomy.json)
+(the keys of `discogs.formats`). It mirrors `genre-not-recognized`: an unrecognized
+format name is logged as a warning violation — captured to `violations.jsonl` and the
+flagged-record files — but the record is still normalized and published, since
+`rules` never blocks publication (only `skip_records` does, and `skip_records` does not
+reference `formats`).
+
+The rule exists to surface a new or misspelled upstream format name before it silently
+falls through to `unmapped` in the normalized/mapped output, rather than to reject data.
+
+**Refreshing `format-not-recognized` after re-vendoring the taxonomy.** The rule's
+`condition.values` list must exactly equal the keys of `discogs.formats` in the vendored
+taxonomy file — `src/discogs/tests/rules_tests.rs::test_format_not_recognized_enum_matches_vendored_taxonomy`
+enforces this by reading both files and failing on any drift. After re-vendoring
+`media-taxonomy.json`, regenerate the enum list, for example:
+
+```bash
+python3 -c '
+import json
+d = json.load(open("contracts/catalog-events/vocab/media-taxonomy.json"))
+for name in d["discogs"]["formats"]:
+    print(f"          - {name}")
+' 
+```
+
+and replace the `values:` block under the `format-not-recognized` rule in
+`extraction-rules.yaml` with the printed lines, then re-run
+`cargo test format_not_recognized` to confirm the drift check passes.
 
 ## Diagnostic output
 

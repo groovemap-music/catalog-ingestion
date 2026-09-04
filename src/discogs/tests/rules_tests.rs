@@ -1,7 +1,8 @@
 //! Discogs extraction-rules module tests.
 
 use crate::discogs::rules::{
-    CompiledFilterCondition, CompiledRulesConfig, QualityReport, RulesConfig, Severity, Violation, apply_filters, evaluate_rules, should_skip_record,
+    CompiledFilterCondition, CompiledRulesConfig, QualityReport, RuleCondition, RulesConfig, Severity, Violation, apply_filters, evaluate_rules,
+    should_skip_record,
 };
 use serde_json::json;
 
@@ -1042,6 +1043,106 @@ fn test_default_rules_file() {
         assert!(!compiled.rules_for("labels").is_empty());
         assert!(!compiled.rules_for("masters").is_empty());
     }
+}
+
+// ── format-not-recognized (Discogs media taxonomy) ──────────────────
+
+/// Local copy of the rule under test, kept independent of the shipped
+/// `extraction-rules.yaml` so these tests don't churn every time the enum is
+/// refreshed. `test_format_not_recognized_enum_matches_vendored_taxonomy`
+/// below is the guard that keeps this in sync with both the real rules file
+/// and the vendored taxonomy.
+fn format_not_recognized_yaml() -> String {
+    format!(
+        r#"
+rules:
+  releases:
+    - name: format-not-recognized
+      description: "Format value is not in the vendored Discogs media taxonomy"
+      field: formats.format.@name
+      condition:
+        type: enum
+        values: [{}]
+      severity: warning
+"#,
+        ["Vinyl", "CD", "Cassette", "File"].join(", ")
+    )
+}
+
+#[test]
+fn test_format_not_recognized_unknown_value_warns_but_not_skipped() {
+    let config = compile_yaml(&format_not_recognized_yaml());
+
+    // A raw, source-shaped (pre-normalization) release record: a single `format`
+    // element under `formats`, xmltodict-style, carrying an unrecognized name.
+    let record = json!({
+        "@id": "999",
+        "formats": {"format": {"@name": "Wax Cylinder", "@qty": "1"}}
+    });
+
+    let violations = evaluate_rules(&config, "releases", &record);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].rule_name, "format-not-recognized");
+    assert!(matches!(violations[0].severity, Severity::Warning));
+    assert_eq!(violations[0].field_value, "Wax Cylinder");
+
+    // Nothing in `skip_records` references `formats`, so a format-not-recognized
+    // warning can never trigger a skip — the record is still published downstream.
+    assert!(should_skip_record(&config, "releases", &record).is_none(), "an unrecognized format must not cause the record to be skipped");
+}
+
+#[test]
+fn test_format_not_recognized_known_value_no_violation() {
+    let config = compile_yaml(&format_not_recognized_yaml());
+
+    // Multiple, array-shaped formats — all recognized.
+    let record = json!({
+        "@id": "1000",
+        "formats": {"format": [{"@name": "Vinyl", "@qty": "1"}, {"@name": "CD", "@qty": "1"}]}
+    });
+
+    let violations = evaluate_rules(&config, "releases", &record);
+    assert!(violations.is_empty());
+    assert!(should_skip_record(&config, "releases", &record).is_none());
+}
+
+/// Drift guard: the `format-not-recognized` enum in the real `extraction-rules.yaml`
+/// must always equal the set of Discogs format names in the vendored media taxonomy
+/// (`contracts/catalog-events/vocab/media-taxonomy.json`, `discogs.formats` keys). If
+/// this test fails after re-vendoring the taxonomy, refresh the enum per the
+/// "Refreshing format-not-recognized" section of docs/extraction-rules-guide.md.
+#[test]
+fn test_format_not_recognized_enum_matches_vendored_taxonomy() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    let rules_path = manifest_dir.join("extraction-rules.yaml");
+    let rules_yaml = std::fs::read_to_string(&rules_path).unwrap_or_else(|e| panic!("failed to read {rules_path:?}: {e}"));
+    let config: RulesConfig = serde_yaml_ng::from_str(&rules_yaml).unwrap();
+    let releases_rules = config.rules.get("releases").expect("extraction-rules.yaml must define releases rules");
+    let rule = releases_rules
+        .iter()
+        .find(|r| r.name == "format-not-recognized")
+        .expect("extraction-rules.yaml must define a format-not-recognized rule under rules.releases");
+    let RuleCondition::Enum { values: rule_values } = &rule.condition else {
+        panic!("format-not-recognized must use an enum condition");
+    };
+    let rule_names: std::collections::BTreeSet<&str> = rule_values.iter().map(String::as_str).collect();
+
+    let taxonomy_path = manifest_dir.join("contracts/catalog-events/vocab/media-taxonomy.json");
+    let taxonomy_raw = std::fs::read_to_string(&taxonomy_path).unwrap_or_else(|e| panic!("failed to read {taxonomy_path:?}: {e}"));
+    let taxonomy: serde_json::Value = serde_json::from_str(&taxonomy_raw).unwrap();
+    let taxonomy_formats = taxonomy
+        .get("discogs")
+        .and_then(|d| d.get("formats"))
+        .and_then(|f| f.as_object())
+        .expect("media-taxonomy.json must have a discogs.formats object");
+    let taxonomy_names: std::collections::BTreeSet<&str> = taxonomy_formats.keys().map(String::as_str).collect();
+
+    assert_eq!(
+        rule_names, taxonomy_names,
+        "format-not-recognized's enum values must exactly equal the Discogs format keys \
+         vendored at contracts/catalog-events/vocab/media-taxonomy.json (discogs.formats)"
+    );
 }
 
 // ── Task 1: YAML Schema — skip_records & filters ────────────────────
