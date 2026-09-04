@@ -13,6 +13,23 @@ The contract preserves the `groovemap-discogs` exchange prefix and the artists, 
 masters, and releases vocabulary. Consumer repositories promote artifacts from a
 reviewed immutable commit rather than editing generated output.
 
+## The `media` field
+
+Every `releases` event carries a `media` block alongside the raw, provider-shaped
+`formats` list it was derived from. `media` maps that list onto the provider-neutral
+vocabulary vendored in `vocab/media-taxonomy.json` -- one canonical family, medium,
+and set of attributes per physical or digital unit the release ships on -- so every
+consumer reads one shape instead of re-deriving it from Discogs' free-text `formats`
+independently. See [ADR 0007, "Canonical media taxonomy and media-neutral product
+core"](https://github.com/groovemap-music/design/blob/main/docs/adr/0007-canonical-media-taxonomy.md)
+for the rationale, and `src/discogs/media.rs` for the mapper that produces it.
+
+`media` is **additive within v1**: existing fields and the event schema are unchanged,
+and the field is optional for a consumer to read. `fixture_payloads.releases` in
+`definitions/discogs.json` carries a representative `formats` payload and the exact
+`media` block the mapper produces for it, so `just contract` regenerates a fixture that
+documents the shape and `just contract-check` guards it from drifting out of date.
+
 ## Vendored media taxonomy
 
 `vocab/media-taxonomy.json` is **not generated**. It is the provider-neutral media
