@@ -15,6 +15,62 @@
       "year": 2000
     },
     "releases": {
+      "formats": [
+        {
+          "name": "Vinyl",
+          "qty": "1",
+          "descriptions": {
+            "description": [
+              "LP",
+              "Album",
+              "Reissue"
+            ]
+          }
+        }
+      ],
+      "media": {
+        "taxonomy_version": "1",
+        "items": [
+          {
+            "family": "vinyl",
+            "medium": "vinyl_12",
+            "qty": 1,
+            "size_inches": 12,
+            "speed_rpm": null,
+            "channels": null,
+            "codec": null,
+            "variants": [],
+            "appearance": [],
+            "position": null,
+            "track_count": null,
+            "source": {
+              "provider": "discogs",
+              "name": "Vinyl",
+              "descriptions": [
+                "LP",
+                "Album",
+                "Reissue"
+              ],
+              "text": null
+            }
+          }
+        ],
+        "families": [
+          "vinyl"
+        ],
+        "release_kind": "album",
+        "traits": [],
+        "edition": [
+          "reissue"
+        ],
+        "packaging": null,
+        "container": null,
+        "flags": [],
+        "unmapped": {
+          "formats": [],
+          "descriptions": []
+        }
+      },
       "released": "2000-01-01",
       "title": "Contract Release"
     }
