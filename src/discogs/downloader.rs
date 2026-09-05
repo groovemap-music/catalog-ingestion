@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, error, info, warn};
+use tracing::{Instrument, debug, error, info, warn};
 
 use async_trait::async_trait;
 
@@ -171,7 +171,16 @@ impl Downloader {
                 }
                 self.save_state_marker().await;
 
-                match self.download_file(file_info).await {
+                // Acquisition and processing are separate phases of the run, so a file's
+                // download cannot share a span with its parse — the download loop has
+                // finished every file before the first one is parsed. The download therefore
+                // opens its own `extract {source} {entity}` root, with `download` as its
+                // child, and the processing phase opens a second one for the same file.
+                let entity = super::extract_data_type(filename).map(|data_type| data_type.as_str()).unwrap_or("unknown");
+                let extract_span = crate::telemetry::extract_span(entity);
+                let download_span = extract_span.in_scope(crate::telemetry::download_span);
+
+                match self.download_file(file_info).instrument(download_span).instrument(extract_span).await {
                     Ok(downloaded_size) => {
                         // Verify the downloaded bytes against the Discogs-published CHECKSUM
                         // before trusting them. Without this, a 200-response whose body isn't
