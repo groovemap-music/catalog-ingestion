@@ -741,6 +741,12 @@ static RUNTIME_METRICS_REGISTERED: OnceLock<()> = OnceLock::new();
 ///
 /// Registration is deliberately not part of instrument binding: [`init_metrics`] calls this
 /// only after it has a live provider, so a disabled bootstrap installs no callbacks at all.
+///
+/// Capturing the handle once is right for a service that has a single runtime for its whole
+/// life, but it does mean the gauges report on whichever runtime registered FIRST. Under
+/// libtest — where every `#[tokio::test]` gets its own runtime and drops it when the test
+/// ends — only the test that registers can meaningfully assert on these gauges; a second
+/// registering test would silently be reading a dead runtime.
 pub fn register_runtime_metrics() {
     if RUNTIME_METRICS_REGISTERED.set(()).is_err() {
         return;

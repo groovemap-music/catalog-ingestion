@@ -13,7 +13,7 @@ use crate::state_marker::StateMarker;
 use crate::types::{DataMessage, DataType};
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
 use serial_test::serial;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::Instrument;
@@ -384,15 +384,18 @@ fn file_and_stage_labels_match_the_conventions() {
 // Runtime metrics
 // ---------------------------------------------------------------------------------------
 
-/// Export everything recorded so far and return `(name, attribute keys, value)` for every
-/// scalar data point. Observable instruments are only collected during an export, so this
-/// is also what drives their callbacks.
-fn flush_numeric_observations() -> Vec<(String, BTreeSet<String>, f64)> {
+/// One exported scalar data point: instrument name, its full attribute set, and its value.
+type Observation = (String, BTreeMap<String, String>, f64);
+
+/// Export everything recorded so far and return every scalar data point. Observable
+/// instruments are only collected during an export, so this is also what drives their
+/// callbacks.
+fn flush_numeric_observations() -> Vec<Observation> {
     let harness = &*crate::telemetry::test_harness::HARNESS;
     harness.provider.force_flush().expect("force_flush should succeed for the in-memory exporter");
 
-    fn keys<'a>(attributes: impl Iterator<Item = &'a opentelemetry::KeyValue>) -> BTreeSet<String> {
-        attributes.map(|kv| kv.key.to_string()).collect()
+    fn attributes<'a>(attributes: impl Iterator<Item = &'a opentelemetry::KeyValue>) -> BTreeMap<String, String> {
+        attributes.map(|kv| (kv.key.to_string(), kv.value.to_string())).collect()
     }
 
     let mut observations = Vec::new();
@@ -403,12 +406,12 @@ fn flush_numeric_observations() -> Vec<(String, BTreeSet<String>, f64)> {
                 match metric.data() {
                     AggregatedMetrics::U64(MetricData::Gauge(gauge)) => {
                         for point in gauge.data_points() {
-                            observations.push((name.clone(), keys(point.attributes()), point.value() as f64));
+                            observations.push((name.clone(), attributes(point.attributes()), point.value() as f64));
                         }
                     }
                     AggregatedMetrics::F64(MetricData::Sum(sum)) => {
                         for point in sum.data_points() {
-                            observations.push((name.clone(), keys(point.attributes()), point.value()));
+                            observations.push((name.clone(), attributes(point.attributes()), point.value()));
                         }
                     }
                     _ => {}
@@ -419,18 +422,18 @@ fn flush_numeric_observations() -> Vec<(String, BTreeSet<String>, f64)> {
     observations
 }
 
-/// The most recent value reported for `name` under exactly `expected` attribute keys.
-fn reported_value(observations: &[(String, BTreeSet<String>, f64)], name: &str, expected: &[&str]) -> f64 {
-    let expected: BTreeSet<String> = expected.iter().map(|k| (*k).to_string()).collect();
+/// The most recent value reported for `name` under exactly the `expected` attributes.
+fn reported_value(observations: &[Observation], name: &str, expected: &[(&str, &str)]) -> f64 {
+    let expected: BTreeMap<String, String> = expected.iter().map(|(key, value)| ((*key).to_string(), (*value).to_string())).collect();
     observations
         .iter()
-        .filter(|(n, keys, _)| n == name && *keys == expected)
+        .filter(|(exported, attributes, _)| exported == name && *attributes == expected)
         .map(|(_, _, value)| *value)
         .next_back()
         .unwrap_or_else(|| {
             panic!(
-                "instrument {name} was never exported with attribute keys {expected:?}; exported: {:?}",
-                observations.iter().map(|(n, _, _)| n).collect::<BTreeSet<_>>()
+                "instrument {name} was never exported with attributes {expected:?}; exported: {:?}",
+                observations.iter().map(|(exported, _, _)| exported).collect::<BTreeSet<_>>()
             )
         })
 }
@@ -438,6 +441,17 @@ fn reported_value(observations: &[(String, BTreeSet<String>, f64)], name: &str, 
 /// The tokio gauges register on every target and report a plausible scheduler state; the
 /// `/proc/self` instruments report plausible resource usage on Linux and are absent — not
 /// zero — everywhere else.
+///
+/// # This must stay the only test that calls `register_runtime_metrics`
+///
+/// Registration is process-wide and captures `Handle::current()` once, which is right in
+/// production — the extractor has exactly one runtime for its whole life — but not under
+/// libtest, which gives every `#[tokio::test]` its own runtime and drops it when the test
+/// ends. Whichever test registers first therefore binds the gauges to a runtime that is
+/// dead for every later test, and `num_alive_tasks` reads 0. A second registering test
+/// would reintroduce that as an ordering-dependent failure, and one that hides on any
+/// target where the test ordered first is compiled out. So every assertion about these
+/// gauges belongs here, in the one test that owns the runtime it asserts on.
 #[tokio::test]
 #[serial]
 async fn runtime_instruments_report_plausible_values() {
@@ -468,8 +482,21 @@ async fn runtime_instruments_report_plausible_values() {
 
     #[cfg(target_os = "linux")]
     {
-        let user = reported_value(&observations, METRIC_PROCESS_CPU_TIME, &[ATTR_CPU_MODE]);
-        assert!(user >= 0.0, "cpu time cannot be negative, saw {user}");
+        // `process.cpu.time` is split by accounting mode, and each mode is looked up under
+        // its exact attribute set — so both modes have to be present, not just one.
+        let user = reported_value(&observations, METRIC_PROCESS_CPU_TIME, &[(ATTR_CPU_MODE, CPU_MODE_USER)]);
+        assert!(user >= 0.0, "user cpu time cannot be negative, saw {user}");
+
+        let system = reported_value(&observations, METRIC_PROCESS_CPU_TIME, &[(ATTR_CPU_MODE, CPU_MODE_SYSTEM)]);
+        assert!(system >= 0.0, "system cpu time cannot be negative, saw {system}");
+
+        // ...and `cpu.mode` is the only attribute it carries.
+        let cpu_time_attributes: BTreeSet<&str> = observations
+            .iter()
+            .filter(|(exported, _, _)| exported == METRIC_PROCESS_CPU_TIME)
+            .flat_map(|(_, attributes, _)| attributes.keys().map(|key| key.as_str()))
+            .collect();
+        assert_eq!(cpu_time_attributes, BTreeSet::from([ATTR_CPU_MODE]), "cpu.mode is the only attribute on process.cpu.time");
 
         let rss = reported_value(&observations, METRIC_PROCESS_MEMORY_USAGE, &[]);
         assert!(rss > 0.0, "a running process has a non-zero resident set, saw {rss}");
@@ -493,22 +520,6 @@ async fn runtime_instruments_report_plausible_values() {
             "{name} must not be registered off Linux — /proc/self does not exist there"
         );
     }
-}
-
-/// `process.cpu.time` carries both accounting modes, and only `cpu.mode`.
-#[cfg(target_os = "linux")]
-#[tokio::test]
-#[serial]
-async fn process_cpu_time_is_split_by_mode() {
-    register_runtime_metrics();
-    let observations = flush_numeric_observations();
-
-    let modes: BTreeSet<String> = observations
-        .iter()
-        .filter(|(name, _, _)| name == METRIC_PROCESS_CPU_TIME)
-        .flat_map(|(_, keys, _)| keys.iter().cloned())
-        .collect();
-    assert_eq!(modes, BTreeSet::from([ATTR_CPU_MODE.to_string()]), "cpu.mode is the only attribute on process.cpu.time");
 }
 
 /// A disabled bootstrap installs no observable callbacks at all, and does not panic.
