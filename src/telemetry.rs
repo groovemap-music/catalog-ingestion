@@ -26,7 +26,9 @@
 //! [`init_metrics`] installs the global `MeterProvider` and MUST be called before the first
 //! `record_*` call. The instruments are created once, lazily, from whatever provider is
 //! global at that moment — so an early recording would permanently bind them to the no-op
-//! provider. `main` calls `init_metrics` immediately after tracing is set up.
+//! provider. `main` calls `init_metrics` immediately after tracing is set up. It also
+//! registers the process and tokio runtime observable instruments, which is why it has to
+//! run on a tokio runtime thread.
 
 use std::io::Read;
 use std::sync::OnceLock;
@@ -176,6 +178,12 @@ pub fn init_metrics(service_name: &str) -> Option<SdkMeterProvider> {
         .build();
 
     global::set_meter_provider(provider.clone());
+
+    // Only once a real provider is global: the observable callbacks are registered with
+    // whatever provider is installed at this moment, so registering them on the disabled
+    // path would bind them permanently to the no-op provider for nothing.
+    register_runtime_metrics();
+
     info!("📈 OpenTelemetry metrics exporting over OTLP/HTTP-protobuf every {:?}", export_interval());
 
     Some(provider)
@@ -447,6 +455,214 @@ pub fn record_messages_sent(destination: &str, count: u64) {
 /// `groovemap.pipeline.reconnects` — a reconnection to a backing system.
 pub fn record_reconnect(system: &str) {
     instruments().reconnects.add(1, &[KeyValue::new(ATTR_SYSTEM, system.to_owned())]);
+}
+
+// ---------------------------------------------------------------------------------------
+// Runtime metrics — process resource usage and tokio scheduler state.
+//
+// Both families are *observable*: the SDK invokes their callbacks on the periodic reader's
+// own thread at collection time, so nothing on the extraction path pays for them and there
+// is no sampling task to schedule. The process family is Linux-only by construction — it
+// reads `/proc/self`, which is the whole point of needing no extra crate — and registers
+// nothing at all off Linux, so a missing series is an honest "not measurable here" rather
+// than a zero that looks like a measurement.
+// ---------------------------------------------------------------------------------------
+
+pub const METRIC_PROCESS_CPU_TIME: &str = "process.cpu.time";
+pub const METRIC_PROCESS_MEMORY_USAGE: &str = "process.memory.usage";
+pub const METRIC_PROCESS_THREAD_COUNT: &str = "process.thread.count";
+pub const METRIC_PROCESS_OPEN_FILE_DESCRIPTOR_COUNT: &str = "process.open_file_descriptor.count";
+pub const METRIC_RUNTIME_TOKIO_WORKERS: &str = "groovemap.runtime.tokio.workers";
+pub const METRIC_RUNTIME_TOKIO_ALIVE_TASKS: &str = "groovemap.runtime.tokio.alive_tasks";
+pub const METRIC_RUNTIME_TOKIO_GLOBAL_QUEUE_DEPTH: &str = "groovemap.runtime.tokio.global_queue_depth";
+
+/// Split of `process.cpu.time`; the only two values the kernel accounts for a process.
+pub const ATTR_CPU_MODE: &str = "cpu.mode";
+pub const CPU_MODE_USER: &str = "user";
+pub const CPU_MODE_SYSTEM: &str = "system";
+
+/// One-shot guard: the observable callbacks are registered with the meter, not owned by the
+/// returned handles, so registering twice would double every reported value.
+static RUNTIME_METRICS_REGISTERED: OnceLock<()> = OnceLock::new();
+
+/// Register the process and tokio runtime observable instruments on the global meter.
+///
+/// Call from *inside* the tokio runtime: the tokio gauges capture `Handle::current()` once,
+/// so the exporter thread can read the scheduler's counters without being on it. Idempotent
+/// — the first call wins and later calls return without touching the meter.
+///
+/// Registration is deliberately not part of instrument binding: [`init_metrics`] calls this
+/// only after it has a live provider, so a disabled bootstrap installs no callbacks at all.
+pub fn register_runtime_metrics() {
+    if RUNTIME_METRICS_REGISTERED.set(()).is_err() {
+        return;
+    }
+
+    // Same reasoning as `instruments()`: force the in-memory harness into existence first so
+    // the callbacks bind to the test provider rather than to the global no-op one.
+    #[cfg(test)]
+    let _ = &*test_harness::HARNESS;
+
+    let meter = global::meter(INSTRUMENTATION_SCOPE);
+    register_process_metrics(&meter);
+    register_tokio_metrics(&meter);
+}
+
+/// `true` once [`register_runtime_metrics`] has installed the callbacks.
+#[cfg(test)]
+pub(crate) fn runtime_metrics_registered() -> bool {
+    RUNTIME_METRICS_REGISTERED.get().is_some()
+}
+
+/// Observable gauges over `tokio::runtime::Handle::metrics()`.
+///
+/// Only the three stable `RuntimeMetrics` accessors are read. Everything richer in that API
+/// (per-worker poll counts, steal counts, queue histograms) is gated behind
+/// `--cfg tokio_unstable`, which would make the whole crate's build flags load-bearing, so
+/// it is deliberately out of scope.
+fn register_tokio_metrics(meter: &Meter) {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        // Registering off-runtime would capture nothing to read; the caller is `init_metrics`
+        // inside `#[tokio::main]`, so this is a misuse rather than an expected state.
+        warn!("⚠️ tokio runtime gauges not registered — register_runtime_metrics ran outside a tokio runtime");
+        return;
+    };
+
+    let workers = handle.clone();
+    let _ = meter
+        .u64_observable_gauge(METRIC_RUNTIME_TOKIO_WORKERS)
+        .with_description("Worker threads in the tokio runtime")
+        .with_callback(move |observer| observer.observe(workers.metrics().num_workers() as u64, &[]))
+        .build();
+
+    let alive_tasks = handle.clone();
+    let _ = meter
+        .u64_observable_gauge(METRIC_RUNTIME_TOKIO_ALIVE_TASKS)
+        .with_description("Tasks spawned on the tokio runtime that have not yet completed")
+        .with_callback(move |observer| observer.observe(alive_tasks.metrics().num_alive_tasks() as u64, &[]))
+        .build();
+
+    let queue_depth = handle;
+    let _ = meter
+        .u64_observable_gauge(METRIC_RUNTIME_TOKIO_GLOBAL_QUEUE_DEPTH)
+        .with_description("Tasks queued on the tokio runtime's global injection queue")
+        .with_callback(move |observer| observer.observe(queue_depth.metrics().global_queue_depth() as u64, &[]))
+        .build();
+}
+
+/// Observable instruments over `/proc/self`.
+///
+/// Every reader returns `Option` and a `None` simply skips that observation for the cycle:
+/// a transient `/proc` read failure leaves a gap in the series rather than reporting a zero
+/// or taking the extractor down.
+#[cfg(target_os = "linux")]
+fn register_process_metrics(meter: &Meter) {
+    let _ = meter
+        .f64_observable_counter(METRIC_PROCESS_CPU_TIME)
+        .with_unit("s")
+        .with_description("CPU time consumed by this process, split by kernel accounting mode")
+        .with_callback(|observer| {
+            if let Some((user, system)) = read_process_cpu_seconds() {
+                observer.observe(user, &[KeyValue::new(ATTR_CPU_MODE, CPU_MODE_USER)]);
+                observer.observe(system, &[KeyValue::new(ATTR_CPU_MODE, CPU_MODE_SYSTEM)]);
+            }
+        })
+        .build();
+
+    let _ = meter
+        .u64_observable_gauge(METRIC_PROCESS_MEMORY_USAGE)
+        .with_unit("By")
+        .with_description("Resident set size of this process")
+        .with_callback(|observer| {
+            if let Some(bytes) = read_process_rss_bytes() {
+                observer.observe(bytes, &[]);
+            }
+        })
+        .build();
+
+    let _ = meter
+        .u64_observable_gauge(METRIC_PROCESS_THREAD_COUNT)
+        .with_description("OS threads in this process")
+        .with_callback(|observer| {
+            if let Some(threads) = read_process_thread_count() {
+                observer.observe(threads, &[]);
+            }
+        })
+        .build();
+
+    let _ = meter
+        .u64_observable_gauge(METRIC_PROCESS_OPEN_FILE_DESCRIPTOR_COUNT)
+        .with_description("File descriptors currently open by this process")
+        .with_callback(|observer| {
+            if let Some(fds) = read_open_file_descriptor_count() {
+                observer.observe(fds, &[]);
+            }
+        })
+        .build();
+}
+
+/// Off Linux there is no `/proc/self`, so the process instruments are not created — an
+/// absent series, never a fabricated zero. The tokio gauges are portable and still register.
+#[cfg(not(target_os = "linux"))]
+fn register_process_metrics(_meter: &Meter) {
+    tracing::debug!("🔍 process.* runtime instruments not registered — /proc/self is Linux-only");
+}
+
+/// The kernel reports `utime`/`stime` in clock ticks. `USER_HZ` — what `sysconf(_SC_CLK_TCK)`
+/// returns — is a frozen part of the Linux userspace ABI at 100, independent of the kernel's
+/// internal `CONFIG_HZ`, so the conversion is a constant and costs no `libc` dependency.
+#[cfg(target_os = "linux")]
+const USER_HZ: f64 = 100.0;
+
+/// `(user, system)` CPU seconds for this process, from `/proc/self/stat`.
+#[cfg(target_os = "linux")]
+fn read_process_cpu_seconds() -> Option<(f64, f64)> {
+    parse_process_cpu_seconds(&std::fs::read_to_string("/proc/self/stat").ok()?)
+}
+
+/// Split out from the reader so the field arithmetic is testable without a real `/proc`.
+#[cfg(target_os = "linux")]
+fn parse_process_cpu_seconds(stat: &str) -> Option<(f64, f64)> {
+    // Field 2 (`comm`) is parenthesised and may itself contain spaces and parentheses, so
+    // whitespace splitting is only unambiguous after the LAST ')'.
+    let rest = stat.rsplit_once(')')?.1;
+    let mut fields = rest.split_whitespace();
+    // The first field after `comm` is `state` (field 3), so `utime` (field 14) is 11 hops on
+    // and `stime` (field 15) is the one after it.
+    let utime: u64 = fields.nth(11)?.parse().ok()?;
+    let stime: u64 = fields.next()?.parse().ok()?;
+    Some((utime as f64 / USER_HZ, stime as f64 / USER_HZ))
+}
+
+/// Resident set size in bytes, from the `VmRSS` line of `/proc/self/status`.
+///
+/// `status` rather than `statm` on purpose: it reports kB directly, so the page size never
+/// has to be looked up through `sysconf`.
+#[cfg(target_os = "linux")]
+fn read_process_rss_bytes() -> Option<u64> {
+    read_status_field(&std::fs::read_to_string("/proc/self/status").ok()?, "VmRSS:").map(|kb| kb.saturating_mul(1024))
+}
+
+/// Live OS thread count, from the `Threads` line of `/proc/self/status`.
+#[cfg(target_os = "linux")]
+fn read_process_thread_count() -> Option<u64> {
+    read_status_field(&std::fs::read_to_string("/proc/self/status").ok()?, "Threads:")
+}
+
+/// First numeric token of the `key` line in a `/proc/self/status` body.
+#[cfg(target_os = "linux")]
+fn read_status_field(status: &str, key: &str) -> Option<u64> {
+    status.lines().find_map(|line| line.strip_prefix(key)?.split_whitespace().next()?.parse().ok())
+}
+
+/// Open descriptors, counted as entries in `/proc/self/fd`.
+#[cfg(target_os = "linux")]
+fn read_open_file_descriptor_count() -> Option<u64> {
+    // `read_dir` itself holds an open descriptor on the directory it is enumerating, and
+    // that descriptor appears in the listing — so it is discounted from the total it is
+    // being used to take.
+    let entries = std::fs::read_dir("/proc/self/fd").ok()?.count() as u64;
+    Some(entries.saturating_sub(1))
 }
 
 // ---------------------------------------------------------------------------------------

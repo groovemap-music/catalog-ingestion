@@ -378,3 +378,184 @@ fn file_and_stage_labels_match_the_conventions() {
     assert_eq!(Stage::Publish.as_str(), "publish");
     assert!(matches!(source(), SOURCE_DISCOGS | "unknown"));
 }
+
+// ---------------------------------------------------------------------------------------
+// Runtime metrics
+// ---------------------------------------------------------------------------------------
+
+/// Export everything recorded so far and return `(name, attribute keys, value)` for every
+/// scalar data point. Observable instruments are only collected during an export, so this
+/// is also what drives their callbacks.
+fn flush_numeric_observations() -> Vec<(String, BTreeSet<String>, f64)> {
+    let harness = &*crate::telemetry::test_harness::HARNESS;
+    harness.provider.force_flush().expect("force_flush should succeed for the in-memory exporter");
+
+    fn keys<'a>(attributes: impl Iterator<Item = &'a opentelemetry::KeyValue>) -> BTreeSet<String> {
+        attributes.map(|kv| kv.key.to_string()).collect()
+    }
+
+    let mut observations = Vec::new();
+    for resource_metrics in harness.exporter.get_finished_metrics().expect("in-memory exporter should hand back its batches") {
+        for scope in resource_metrics.scope_metrics() {
+            for metric in scope.metrics() {
+                let name = metric.name().to_string();
+                match metric.data() {
+                    AggregatedMetrics::U64(MetricData::Gauge(gauge)) => {
+                        for point in gauge.data_points() {
+                            observations.push((name.clone(), keys(point.attributes()), point.value() as f64));
+                        }
+                    }
+                    AggregatedMetrics::F64(MetricData::Sum(sum)) => {
+                        for point in sum.data_points() {
+                            observations.push((name.clone(), keys(point.attributes()), point.value()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    observations
+}
+
+/// The most recent value reported for `name` under exactly `expected` attribute keys.
+fn reported_value(observations: &[(String, BTreeSet<String>, f64)], name: &str, expected: &[&str]) -> f64 {
+    let expected: BTreeSet<String> = expected.iter().map(|k| (*k).to_string()).collect();
+    observations
+        .iter()
+        .filter(|(n, keys, _)| n == name && *keys == expected)
+        .map(|(_, _, value)| *value)
+        .next_back()
+        .unwrap_or_else(|| {
+            panic!(
+                "instrument {name} was never exported with attribute keys {expected:?}; exported: {:?}",
+                observations.iter().map(|(n, _, _)| n).collect::<BTreeSet<_>>()
+            )
+        })
+}
+
+/// The tokio gauges register on every target and report a plausible scheduler state; the
+/// `/proc/self` instruments report plausible resource usage on Linux and are absent — not
+/// zero — everywhere else.
+#[tokio::test]
+#[serial]
+async fn runtime_instruments_report_plausible_values() {
+    register_runtime_metrics();
+
+    // `num_alive_tasks` counts SPAWNED tasks, and the test body itself is driven by
+    // `block_on` rather than spawned — so park one real task on the runtime to give the
+    // gauge something true to report, and release it once the export has been collected.
+    let (release, parked) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let _ = parked.await;
+    });
+    tokio::task::yield_now().await;
+
+    let observations = flush_numeric_observations();
+
+    let _ = release.send(());
+    task.await.expect("the parked task should finish cleanly");
+
+    let workers = reported_value(&observations, METRIC_RUNTIME_TOKIO_WORKERS, &[]);
+    assert!(workers >= 1.0, "a running tokio runtime has at least one worker, saw {workers}");
+
+    let alive_tasks = reported_value(&observations, METRIC_RUNTIME_TOKIO_ALIVE_TASKS, &[]);
+    assert!(alive_tasks >= 1.0, "the parked task must show up as alive, saw {alive_tasks}");
+
+    let queue_depth = reported_value(&observations, METRIC_RUNTIME_TOKIO_GLOBAL_QUEUE_DEPTH, &[]);
+    assert!(queue_depth >= 0.0, "the global queue depth cannot be negative, saw {queue_depth}");
+
+    #[cfg(target_os = "linux")]
+    {
+        let user = reported_value(&observations, METRIC_PROCESS_CPU_TIME, &[ATTR_CPU_MODE]);
+        assert!(user >= 0.0, "cpu time cannot be negative, saw {user}");
+
+        let rss = reported_value(&observations, METRIC_PROCESS_MEMORY_USAGE, &[]);
+        assert!(rss > 0.0, "a running process has a non-zero resident set, saw {rss}");
+
+        let threads = reported_value(&observations, METRIC_PROCESS_THREAD_COUNT, &[]);
+        assert!(threads >= 1.0, "a running process has at least one thread, saw {threads}");
+
+        let fds = reported_value(&observations, METRIC_PROCESS_OPEN_FILE_DESCRIPTOR_COUNT, &[]);
+        assert!(fds >= 3.0, "stdin/stdout/stderr are always open, saw {fds}");
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    for name in [
+        METRIC_PROCESS_CPU_TIME,
+        METRIC_PROCESS_MEMORY_USAGE,
+        METRIC_PROCESS_THREAD_COUNT,
+        METRIC_PROCESS_OPEN_FILE_DESCRIPTOR_COUNT,
+    ] {
+        assert!(
+            !observations.iter().any(|(exported, _, _)| exported == name),
+            "{name} must not be registered off Linux — /proc/self does not exist there"
+        );
+    }
+}
+
+/// `process.cpu.time` carries both accounting modes, and only `cpu.mode`.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[serial]
+async fn process_cpu_time_is_split_by_mode() {
+    register_runtime_metrics();
+    let observations = flush_numeric_observations();
+
+    let modes: BTreeSet<String> = observations
+        .iter()
+        .filter(|(name, _, _)| name == METRIC_PROCESS_CPU_TIME)
+        .flat_map(|(_, keys, _)| keys.iter().cloned())
+        .collect();
+    assert_eq!(modes, BTreeSet::from([ATTR_CPU_MODE.to_string()]), "cpu.mode is the only attribute on process.cpu.time");
+}
+
+/// A disabled bootstrap installs no observable callbacks at all, and does not panic.
+#[tokio::test]
+#[serial]
+async fn init_metrics_disabled_registers_no_runtime_instruments() {
+    unsafe {
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT");
+        std::env::set_var("OTEL_METRICS_EXPORTER", "none");
+    }
+    let registered_before = crate::telemetry::runtime_metrics_registered();
+    let provider = init_metrics(DEFAULT_SERVICE_NAME);
+    let registered_after = crate::telemetry::runtime_metrics_registered();
+    unsafe {
+        std::env::remove_var("OTEL_METRICS_EXPORTER");
+    }
+
+    assert!(provider.is_none());
+    assert_eq!(registered_after, registered_before, "a disabled bootstrap must not register runtime instruments");
+}
+
+/// The `/proc/self/stat` field walk survives a `comm` containing spaces and parentheses.
+#[cfg(target_os = "linux")]
+#[test]
+fn process_cpu_seconds_parses_an_awkward_comm() {
+    let fields: Vec<String> = (3..=52).map(|n| n.to_string()).collect();
+    let stat = format!("1 (weird ) name) S {}", fields[1..].join(" "));
+    // Fields 14 and 15 in that synthetic line are the literal numbers 14 and 15.
+    let (user, system) = crate::telemetry::parse_process_cpu_seconds(&stat).expect("stat line should parse");
+    assert_eq!(user, 14.0 / 100.0);
+    assert_eq!(system, 15.0 / 100.0);
+}
+
+/// A truncated `/proc/self/stat` yields no observation rather than a panic or a zero.
+#[cfg(target_os = "linux")]
+#[test]
+fn process_cpu_seconds_rejects_a_truncated_stat_line() {
+    assert!(crate::telemetry::parse_process_cpu_seconds("1 (extractor) S 3 4 5").is_none());
+    assert!(crate::telemetry::parse_process_cpu_seconds("").is_none());
+}
+
+/// `VmRSS` and `Threads` are read out of a `/proc/self/status` body by name.
+#[cfg(target_os = "linux")]
+#[test]
+fn status_fields_are_read_by_name() {
+    let status = "Name:\textractor\nThreads:\t9\nVmRSS:\t   12345 kB\n";
+    assert_eq!(crate::telemetry::read_status_field(status, "Threads:"), Some(9));
+    assert_eq!(crate::telemetry::read_status_field(status, "VmRSS:"), Some(12345));
+    assert_eq!(crate::telemetry::read_status_field(status, "VmHWM:"), None);
+}

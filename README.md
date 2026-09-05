@@ -73,5 +73,21 @@ Instruments emitted:
 | `messaging.client.sent.messages` | counter | `messaging.system`, `messaging.destination.name` |
 | `groovemap.pipeline.reconnects` | counter | `system` |
 
+Runtime instruments are observable: the SDK reads them on the exporter's own thread at
+collection time, so nothing on the extraction path pays for them. The `process.*` family
+reads `/proc/self` and needs no extra crate; off Linux those four instruments are not
+registered at all, so the series is absent rather than a misleading zero. The tokio gauges
+use only the stable `RuntimeMetrics` accessors — nothing behind `--cfg tokio_unstable`.
+
+| Instrument | Kind | Attributes |
+| --- | --- | --- |
+| `process.cpu.time` | counter (`s`), Linux only | `cpu.mode` (`user`, `system`) |
+| `process.memory.usage` | gauge (`By`, RSS), Linux only | — |
+| `process.thread.count` | gauge, Linux only | — |
+| `process.open_file_descriptor.count` | gauge, Linux only | — |
+| `groovemap.runtime.tokio.workers` | gauge | — |
+| `groovemap.runtime.tokio.alive_tasks` | gauge | — |
+| `groovemap.runtime.tokio.global_queue_depth` | gauge | — |
+
 See the [documentation index](docs/README.md) and the [contract guide](contracts/catalog-events/README.md).
 The project is licensed under the [MIT License](LICENSE).
