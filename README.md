@@ -36,6 +36,32 @@ every push. Run `just image` yourself whenever you touch a compile-time `include
 else the Docker build context depends on, since `just check` alone won't catch a missing
 `COPY`.
 
+### Compiler cache
+
+Rust builds go through [sccache](https://github.com/mozilla/sccache). `.cargo/config.toml`
+sets `rustc-wrapper = "sccache"` and `just bootstrap` installs the pinned version from
+`.mise.toml`, so every `cargo` recipe reuses previously compiled objects instead of
+rebuilding them after a toolchain or dependency change.
+
+The cache lives on local disk outside the repository: `~/Library/Caches/Mozilla.sccache`
+on macOS and `~/.cache/sccache` on Linux. Set `SCCACHE_DIR` to move it. Inspect hit rates,
+the resolved location, and the current size with:
+
+```bash
+sccache --show-stats
+```
+
+To compile without the cache for one command, blank the wrapper:
+
+```bash
+RUSTC_WRAPPER= just check
+```
+
+The image build carries its own cache. The builder stage installs the sha256-verified
+sccache musl release and mounts a BuildKit cache at `/root/.cache/sccache`, so a repeated
+`just image` reuses objects across builds and prints `sccache --show-stats` when the
+application build finishes. That cache is separate from the local one above.
+
 ## Telemetry
 
 The extractor pushes OpenTelemetry metrics over **OTLP/HTTP-protobuf** to the collector.

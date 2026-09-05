@@ -1,0 +1,5 @@
+# Route rustc through sccache so local `just` recipes reuse compiled objects across
+# toolchain and dependency churn. `just bootstrap` installs the pinned sccache from
+# .mise.toml; unset the wrapper with `RUSTC_WRAPPER=` to compile without the cache.
+[build]
+rustc-wrapper = "sccache"
