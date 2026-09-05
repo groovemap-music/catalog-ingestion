@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info, warn};
+use tracing::{Instrument, debug, error, info, warn};
 
 use crate::config::ExtractorConfig;
 use crate::message_queue::MessagePublisher;
@@ -440,6 +440,11 @@ pub async fn process_single_file(
         info!("📋 Started file processing in state marker: {}", file_name);
     }
 
+    // The INTERNAL root span for this file's processing. `parse` and every
+    // `publish {destination}` below hang off it, and it stays alive until the whole pipeline
+    // has drained so its duration is the file's, not the spawn's.
+    let extract_span = telemetry::extract_span(data_type.as_str());
+
     // Declare fanout exchange for this data type
     mq.setup_exchange(data_type).await?;
 
@@ -496,16 +501,23 @@ pub async fn process_single_file(
 
             let parser_handle = tokio::spawn({
                 let file_path = config.discogs_root.join(file_name); // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path
+                // Built here, while the root span is current, so it becomes its child; then
+                // carried across the spawn boundary, which `tracing` does not do on its own.
+                let parse_span = telemetry::parse_span();
                 async move {
                     let parser = XmlParser::with_options(data_type, parse_sender, true);
                     parser.parse_file(&file_path).await
                 }
+                .instrument(parse_span)
             });
 
             let publisher_handle = tokio::spawn({
                 let mq = mq.clone();
                 let state = state.clone();
-                async move { message_publisher(batch_receiver, mq, data_type, state).await }
+                // The publisher task runs under the root span so each batch's PRODUCER span
+                // is a child of this file's `extract`, not a detached root.
+                let span = extract_span.clone();
+                async move { message_publisher(batch_receiver, mq, data_type, state).await }.instrument(span)
             });
 
             let (parser_result, validator_result, normalizer_result, batcher_result, publisher_result) =
@@ -531,10 +543,12 @@ pub async fn process_single_file(
             // and hashing still happen so consumers receive the same shape as the rules path. (cu2.43)
             let parser_handle = tokio::spawn({
                 let file_path = config.discogs_root.join(file_name);
+                let parse_span = telemetry::parse_span();
                 async move {
                     let parser = XmlParser::new(data_type, parse_sender);
                     parser.parse_file(&file_path).await
                 }
+                .instrument(parse_span)
             });
 
             let normalizer_handle = tokio::spawn(async move { message_normalizer(parse_receiver, normalized_sender, data_type).await });
@@ -553,7 +567,8 @@ pub async fn process_single_file(
             let publisher_handle = tokio::spawn({
                 let mq = mq.clone();
                 let state = state.clone();
-                async move { message_publisher(batch_receiver, mq, data_type, state).await }
+                let span = extract_span.clone();
+                async move { message_publisher(batch_receiver, mq, data_type, state).await }.instrument(span)
             });
 
             let total_count = parser_handle.await??;
@@ -586,6 +601,7 @@ pub async fn process_single_file(
 
         Ok(total_count)
     }
+    .instrument(extract_span.clone())
     .await;
 
     // Update state. Only `completed_files` is success-conditional; the active-connection
@@ -710,7 +726,7 @@ pub async fn message_normalizer(mut receiver: mpsc::Receiver<DataMessage>, sende
 }
 
 /// Extract a Discogs data type from its dump filename.
-fn extract_data_type(filename: &str) -> Option<DataType> {
+pub(crate) fn extract_data_type(filename: &str) -> Option<DataType> {
     // Format: discogs_YYYYMMDD_datatype.xml.gz
     let parts: Vec<&str> = filename.split('_').collect();
     if parts.len() >= 3 {
